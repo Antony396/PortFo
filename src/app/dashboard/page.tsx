@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import PriceDisplay from '../../components/portfolio/PriceDisplay';
 import PieChart from '../../components/portfolio/PieChart';
@@ -46,14 +47,24 @@ export default function DashboardPage() {
   const [sidebarRows, setSidebarRows] = useState<SidebarRow[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
       content: 'Hi — I can help explain your portfolio, day moves, quick risk notes, and I can help you make changes to your portfolio.',
     },
   ]);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
+  const desktopDropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const getActiveDropdownAnchor = () => {
+    if (typeof window === 'undefined') return desktopDropdownRef.current || mobileDropdownRef.current;
+    return window.matchMedia('(min-width: 1024px)').matches
+      ? desktopDropdownRef.current
+      : mobileDropdownRef.current;
+  };
 
   // --- PERSISTENCE LOGIC ---
   const loadLocalPortfolio = () => {
@@ -157,13 +168,46 @@ export default function DashboardPage() {
   // --- ACTIONS & SEARCH ---
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const clickedMobileInputArea = mobileDropdownRef.current?.contains(target);
+      const clickedDesktopInputArea = desktopDropdownRef.current?.contains(target);
+      const clickedDropdownMenu = dropdownMenuRef.current?.contains(target);
+
+      if (!clickedMobileInputArea && !clickedDesktopInputArea && !clickedDropdownMenu) {
         setShowDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!showDropdown || suggestions.length === 0) {
+      setDropdownStyle(null);
+      return;
+    }
+
+    const updateDropdownPosition = () => {
+      const anchor = getActiveDropdownAnchor();
+      if (!anchor) return;
+
+      const rect = anchor.getBoundingClientRect();
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+
+    updateDropdownPosition();
+    window.addEventListener('resize', updateDropdownPosition);
+    window.addEventListener('scroll', updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updateDropdownPosition);
+      window.removeEventListener('scroll', updateDropdownPosition, true);
+    };
+  }, [showDropdown, suggestions.length, isEditing]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -449,6 +493,39 @@ export default function DashboardPage() {
     </div>
   );
 
+  const dropdownPortal =
+    showDropdown && suggestions.length > 0 && dropdownStyle
+      ? createPortal(
+          <div
+            ref={dropdownMenuRef}
+            className="fixed bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2"
+            style={{
+              top: dropdownStyle.top,
+              left: dropdownStyle.left,
+              width: dropdownStyle.width,
+              zIndex: 9999,
+            }}
+          >
+            {suggestions.map((item) => (
+              <button
+                key={`suggest-${item.symbol}`}
+                onClick={() => selectSuggestion(item)}
+                className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
+              >
+                <div className="flex flex-col">
+                  <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
+                  <span className="text-[10px] text-blue-200/70 font-medium truncate max-w-[280px]">
+                    {item.description}
+                  </span>
+                </div>
+                <span className="text-blue-300 font-semibold text-[11px]">Use</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-8 md:py-12 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
       <div className="hidden lg:block fixed inset-y-0 left-0 w-[220px] bg-white/5 border-r border-white/10 backdrop-blur-sm pointer-events-none" />
@@ -542,7 +619,7 @@ export default function DashboardPage() {
           </div>
 
           <p className="text-[10px] text-blue-200/70 uppercase tracking-[0.1em]">Swipe table left/right to view all columns</p>
-          <div className="overflow-x-auto overflow-y-visible">
+          <div className="overflow-x-auto overflow-y-visible relative z-30">
             <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
               <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
                 <span className="col-span-2">Asset</span>
@@ -600,7 +677,7 @@ export default function DashboardPage() {
 
                 {isEditing && (
                   <div className="px-8 py-5 bg-white/5 border-t border-white/10">
-                    <div className="relative" ref={dropdownRef}>
+                    <div className="relative z-[90]" ref={mobileDropdownRef}>
                       <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
                       <div className="grid grid-cols-1 gap-2">
                         <input
@@ -635,25 +712,6 @@ export default function DashboardPage() {
                         </button>
                       </div>
 
-                      {showDropdown && suggestions.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
-                          {suggestions.map((item) => (
-                            <button
-                              key={`mobile-suggest-${item.symbol}`}
-                              onClick={() => selectSuggestion(item)}
-                              className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
-                            >
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
-                                <span className="text-[10px] text-blue-200/70 font-medium truncate max-w-[280px]">
-                                  {item.description}
-                                </span>
-                              </div>
-                              <span className="text-blue-300 font-semibold text-[11px]">Use</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -661,7 +719,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-start gap-3">
+          <div className="relative z-10 flex items-center justify-start gap-3">
             <button
               onClick={toggleEditMode}
               className={`px-5 py-2.5 border rounded-xl text-[12px] font-semibold transition-all ${
@@ -763,7 +821,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="overflow-x-auto overflow-y-visible">
+            <div className="overflow-x-auto overflow-y-visible relative z-30">
               <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
               <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
                 <span className="col-span-2">Asset</span>
@@ -835,7 +893,7 @@ export default function DashboardPage() {
 
                 {isEditing && (
                   <div className="px-8 py-5 bg-white/5 border-t border-white/10">
-                    <div className="relative" ref={dropdownRef}>
+                    <div className="relative z-[90]" ref={desktopDropdownRef}>
                       <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                         <input
@@ -873,25 +931,6 @@ export default function DashboardPage() {
                       </p>
                       {addStatus && <p className="mt-1 text-[11px] font-semibold text-blue-700">{addStatus}</p>}
 
-                      {showDropdown && suggestions.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
-                          {suggestions.map((item) => (
-                            <button
-                              key={item.symbol}
-                              onClick={() => selectSuggestion(item)}
-                              className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
-                            >
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
-                                <span className="text-[10px] text-blue-200/70 font-medium truncate max-w-[280px]">
-                                  {item.description}
-                                </span>
-                              </div>
-                              <span className="text-blue-300 font-semibold text-[11px]">Use</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -899,7 +938,7 @@ export default function DashboardPage() {
             </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-start gap-3">
+            <div className="relative z-10 mt-5 flex items-center justify-start gap-3">
               <button
                 onClick={toggleEditMode}
                 className={`px-5 py-2.5 border rounded-xl text-[12px] font-semibold transition-all shadow-sm active:scale-95 ${
@@ -975,6 +1014,7 @@ export default function DashboardPage() {
           </aside>
         </div>
       </div>
+      {dropdownPortal}
     </div>
   );
 }
