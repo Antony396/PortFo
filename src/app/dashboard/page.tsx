@@ -3,14 +3,21 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import PriceDisplay from '../../components/portfolio/PriceDisplay';
 import PieChart from '../../components/portfolio/PieChart';
-import { UserButton, SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, SignOutButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs";
 
 export default function DashboardPage() {
+  const { user } = useUser();
+
   type SidebarRow = {
     symbol: string;
     value: number;
     percentChange: number;
     dayChangeValue: number;
+  };
+
+  type ChatMessage = {
+    role: 'user' | 'assistant';
+    content: string;
   };
 
   // 1. Core Portfolio State
@@ -33,9 +40,19 @@ export default function DashboardPage() {
   const [showChart, setShowChart] = useState(false);
   const [chartData, setChartData] = useState<{symbol:string;value:number}[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [showAiHelper, setShowAiHelper] = useState(true);
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [sidebarRows, setSidebarRows] = useState<SidebarRow[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      role: 'assistant',
+      content: 'Hi — I can help explain your portfolio, day moves, quick risk notes, and I can help you make changes to your portfolio.',
+    },
+  ]);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // --- PERSISTENCE LOGIC ---
   useEffect(() => {
@@ -90,6 +107,10 @@ export default function DashboardPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [chatMessages, chatLoading]);
 
   const handleSearchChange = async (query: string) => {
     setNewSymbol(query);
@@ -244,11 +265,65 @@ export default function DashboardPage() {
         return { symbol: stock.symbol, value: total };
       }));
       setChartData(results);
+      setShowAiHelper(false);
       setShowChart(true);
     } catch (error) {
       console.error('Chart data error', error);
     } finally {
       setChartLoading(false);
+    }
+  };
+
+  const toggleAiHelper = () => {
+    if (showAiHelper) {
+      setShowAiHelper(false);
+      return;
+    }
+
+    setShowChart(false);
+    setShowAiHelper(true);
+  };
+
+  const userDisplayName =
+    user?.username ||
+    user?.fullName ||
+    user?.firstName ||
+    user?.primaryEmailAddress?.emailAddress ||
+    'Signed in';
+
+  const sendChatMessage = async () => {
+    const message = chatInput.trim();
+    if (!message || chatLoading) return;
+
+    const nextMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }];
+    setChatMessages(nextMessages);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          holdings: stocks,
+          overview: {
+            totalValue,
+            totalDayChange,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      const reply = typeof data?.reply === 'string' ? data.reply : 'I could not generate a response right now.';
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'AI helper is temporarily unavailable. Please try again.' },
+      ]);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -272,6 +347,25 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[190px_minmax(0,1fr)_300px] items-stretch lg:items-start gap-6 pl-0 pr-0 md:pr-2 lg:pr-0">
           <aside className="w-full shrink-0">
             <div className="bg-white/5 rounded-2xl border border-white/10 shadow-sm p-4 flex flex-col gap-3 lg:sticky lg:top-6 backdrop-blur-md">
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all shadow-sm active:scale-95">
+                    Login
+                  </button>
+                </SignInButton>
+              </SignedOut>
+
+              <SignedIn>
+                <SignOutButton redirectUrl="/dashboard">
+                  <button
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/10 rounded-xl text-[12px] font-semibold text-blue-50 text-center truncate hover:bg-white/15 transition-all"
+                    title={`${userDisplayName} • Click to logout`}
+                  >
+                    {userDisplayName} • Logout
+                  </button>
+                </SignOutButton>
+              </SignedIn>
+
               <Link
                 href="/dcf"
                 className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all text-center"
@@ -285,19 +379,12 @@ export default function DashboardPage() {
                 Show Chart
               </button>
 
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all shadow-sm active:scale-95">
-                    Login
-                  </button>
-                </SignInButton>
-              </SignedOut>
-
-              <SignedIn>
-                <div className="w-full flex items-center justify-center bg-white/10 p-2 rounded-xl border border-white/10 shadow-sm">
-                  <UserButton afterSignOutUrl="/dashboard" />
-                </div>
-              </SignedIn>
+              <button
+                onClick={toggleAiHelper}
+                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+              >
+                AI Helper
+              </button>
             </div>
           </aside>
 
@@ -465,6 +552,67 @@ export default function DashboardPage() {
                 </button>
               )}
             </div>
+
+            {showAiHelper && (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4">
+                <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">AI Helper</p>
+                <p className="mt-1 text-[10px] text-blue-200/70">
+                  By using AI Helper, you agree to our{' '}
+                  <Link href="/privacy" className="underline hover:text-blue-100 transition-colors">
+                    Privacy Policy
+                  </Link>{' '}
+                  and{' '}
+                  <Link href="/ai-disclaimer" className="underline hover:text-blue-100 transition-colors">
+                    AI Disclaimer
+                  </Link>
+                  .
+                </p>
+
+                <div className="mt-3 max-h-[260px] overflow-y-auto space-y-2 pr-1">
+                  {chatMessages.map((entry, index) => (
+                    <div
+                      key={`${entry.role}-${index}`}
+                      className={`rounded-lg px-3 py-2 text-[12px] leading-relaxed ${
+                        entry.role === 'assistant'
+                          ? 'bg-white/10 text-blue-100 border border-white/10'
+                          : 'bg-blue-600/80 text-white border border-blue-400/40'
+                      }`}
+                    >
+                      {entry.content}
+                    </div>
+                  ))}
+                  {chatLoading && (
+                    <div className="rounded-lg px-3 py-2 text-[12px] bg-white/10 text-blue-200 border border-white/10">
+                      Thinking…
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        sendChatMessage();
+                      }
+                    }}
+                    placeholder="Ask about your holdings"
+                    className="flex-1 px-3 py-2 bg-slate-800/80 text-slate-100 border border-white/10 rounded-lg text-[12px] font-medium focus:outline-none focus:border-blue-400"
+                  />
+                  <button
+                    onClick={sendChatMessage}
+                    disabled={chatLoading}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-[12px] font-semibold hover:bg-blue-700 transition-all disabled:opacity-60"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            )}
 
             {showChart && (
               <div className="mt-4 relative">
