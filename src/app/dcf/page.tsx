@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { calculateDCF } from '../../lib/dcf';
 
@@ -49,8 +49,11 @@ export default function DCFPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [result, setResult] = useState<ReturnType<typeof calculateDCF> | null>(null);
   const [error, setError] = useState('');
-  const [autofillLoading, setAutofillLoading] = useState(false);
+  const [showDcfDescription, setShowDcfDescription] = useState(false);
   const [showMathDemo, setShowMathDemo] = useState(false);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const parsedValues = useMemo(() => {
     return {
@@ -67,42 +70,46 @@ export default function DCFPage() {
 
   const denominator = parsedValues.discountRate - parsedValues.terminalGrowth;
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleChange = (key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleAutofill = async () => {
-    setError('');
-    setResult(null);
+  const handleSymbolChange = async (query: string) => {
+    const upperQuery = query.toUpperCase();
+    handleChange('symbol', upperQuery);
 
-    const symbol = form.symbol.trim().toUpperCase();
-    if (!symbol) {
-      setError('Please enter a symbol first.');
+    if (upperQuery.length === 0) {
+      setSuggestions([]);
+      setShowDropdown(false);
       return;
     }
 
     try {
-      setAutofillLoading(true);
-      const response = await fetch(`/api/dcf/financials?symbol=${encodeURIComponent(symbol)}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to autofill values.');
-      }
-
-      setForm((prev) => ({
-        ...prev,
-        symbol,
-        fcf: String(data.fcf ?? ''),
-        sharesOutstanding: String(data.shares ?? ''),
-        cashEquivalent: String(data.cash ?? 0),
-        totalDebt: String(data.debt ?? 0),
-      }));
-    } catch (autofillError) {
-      setError(autofillError instanceof Error ? autofillError.message : 'Autofill failed.');
-    } finally {
-      setAutofillLoading(false);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(upperQuery)}`);
+      const data = await res.json();
+      setSuggestions(data.result || []);
+      setShowDropdown(true);
+    } catch (searchError) {
+      console.error('DCF symbol search error', searchError);
+      setSuggestions([]);
+      setShowDropdown(false);
     }
+  };
+
+  const applySuggestion = (symbol: string) => {
+    handleChange('symbol', symbol.toUpperCase());
+    setShowDropdown(false);
   };
 
   const handleCalculate = () => {
@@ -154,6 +161,25 @@ export default function DCFPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
           <div className="bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-6 lg:sticky lg:top-6">
             <button
+              onClick={() => setShowDcfDescription((prev) => !prev)}
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all text-left mb-3"
+            >
+              {showDcfDescription ? 'Hide DCF Description ▲' : 'What Is DCF? ▼'}
+            </button>
+
+            {showDcfDescription && (
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-3">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Plain-English Overview</p>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  DCF estimates what a company is worth today by forecasting its future cash flows and then discounting
+                  those future amounts back to present value. It combines the value of projected yearly cash flows with
+                  a terminal value, adjusts for cash and debt to get equity value, and then divides by shares outstanding
+                  to estimate intrinsic value per share.
+                </p>
+              </div>
+            )}
+
+            <button
               onClick={() => setShowMathDemo((prev) => !prev)}
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all text-left"
             >
@@ -198,25 +224,39 @@ export default function DCFPage() {
           <div>
             <div className="bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-8">
               <div className="mb-6 flex flex-col md:flex-row gap-3 md:items-end">
-                <div className="w-full md:max-w-[220px]">
+                <div className="w-full md:max-w-[220px] relative" ref={dropdownRef}>
                   <label className="block text-[11px] font-black text-gray-500 uppercase tracking-widest mb-2">
                     Symbol
                   </label>
                   <input
                     type="text"
                     value={form.symbol}
-                    onChange={(event) => handleChange('symbol', event.target.value.toUpperCase())}
+                    onChange={(event) => handleSymbolChange(event.target.value)}
+                    onFocus={() => setShowDropdown(suggestions.length > 0)}
                     className="w-full px-4 py-3 bg-gray-50 border border-transparent focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
                     placeholder="AAPL"
                   />
+
+                  {showDropdown && suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
+                      {suggestions.map((item) => (
+                        <button
+                          key={item.symbol}
+                          onClick={() => applySuggestion(item.symbol)}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-blue-50 transition-colors text-left border-b border-gray-50 last:border-0"
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-black text-sm">{item.symbol}</span>
+                            <span className="text-[9px] text-gray-400 font-bold uppercase truncate max-w-[150px]">
+                              {item.description}
+                            </span>
+                          </div>
+                          <span className="text-blue-500 font-bold text-[10px] uppercase">Select</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={handleAutofill}
-                  disabled={autofillLoading}
-                  className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {autofillLoading ? 'Loading...' : 'Auto Fill'}
-                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
