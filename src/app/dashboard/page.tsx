@@ -108,6 +108,30 @@ export default function DashboardPage() {
     setStocks(prev => prev.map(s => s.symbol === symbol ? { ...s, [field]: numVal } : s));
   };
 
+  const fetchChartData = async () => {
+    if (showChart) {
+      setShowChart(false);
+      return;
+    }
+
+    try {
+      setChartLoading(true);
+      const results = await Promise.all(stocks.map(async (stock) => {
+        const res = await fetch(`/api/price/${stock.symbol}`);
+        const json = await res.json();
+        const price = json.currentPrice || 0;
+        const total = price * stock.quantity;
+        return { symbol: stock.symbol, value: total };
+      }));
+      setChartData(results);
+      setShowChart(true);
+    } catch (error) {
+      console.error('Chart data error', error);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#fafafa] py-12 px-4 font-sans text-gray-900">
       <div className="max-w-[1300px] mx-auto relative">
@@ -123,13 +147,6 @@ export default function DashboardPage() {
 
           <div className="flex items-center gap-4">
             {/* Action Buttons */}
-            <Link
-              href="/dcf"
-              className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
-            >
-              DCF Calc
-            </Link>
-
             <button 
               onClick={toggleEditMode}
               className={`px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 ${
@@ -203,121 +220,112 @@ export default function DashboardPage() {
         </div>
 
 
-        {/* PORTFOLIO GRID */}
-        <div className="bg-white rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden">
-          {/* Grid Headers */}
-          <div className="grid grid-cols-12 px-10 pt-10 pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            <span className="col-span-2">Asset</span>
-            <span className="col-span-2 text-center">Avg Price</span>
-            <span className="col-span-1 text-center">Qty</span>
-            <span className="col-span-2 text-right">Market Price</span>
-            <span className="col-span-2 text-right">24h</span>
-            <span className="col-span-1 text-right">Value</span>
-            <span className="col-span-2 text-right">Profit/Loss</span>
-          </div>
+        <div className="flex items-start gap-6 pl-2 pr-10">
+          <aside className="w-[180px] shrink-0">
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-[0_20px_45px_rgba(0,0,0,0.03)] p-4 flex flex-col gap-3 sticky top-6">
+              <Link
+                href="/dcf"
+                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all text-center"
+              >
+                DCF Calc
+              </Link>
+              <button
+                onClick={fetchChartData}
+                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all"
+              >
+                Show Chart
+              </button>
+            </div>
+          </aside>
 
-          <div className="divide-y divide-gray-50">
-            {stocks.map((stock) => (
-              <div key={stock.symbol} className="p-10 hover:bg-gray-50/50 transition-all group relative">
-                {isEditing && (
-                  <button 
-                    onClick={() => removeStock(stock.symbol)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-xs p-2"
-                  >
-                    ✕
-                  </button>
-                )}
-
-                <PriceDisplay 
-                  symbol={stock.symbol} 
-                  avgPrice={stock.avgPrice}
-                  quantity={stock.quantity}
-                >
-                  <div className="grid grid-cols-3 items-center justify-center gap-4">
-                    {/* avg price column */}
-                    {isEditing ? (
-                      <div className="relative w-full col-span-2">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
-                        <input 
-                          type="number"
-                          value={stock.avgPrice || ''}
-                          onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                          className="w-full pl-7 pr-3 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-gray-700 font-bold col-span-2 text-center">
-                        ${stock.avgPrice.toFixed(2)}
-                      </span>
-                    )}
-
-                    {/* quantity column */}
-                    {isEditing ? (
-                      <input 
-                        type="number"
-                        placeholder="Qty"
-                        value={stock.quantity || ''}
-                        onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                        className="w-full px-2 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold text-center focus:outline-none focus:bg-white transition-all text-sm col-span-1"
-                      />
-                    ) : (
-                      <span className="text-gray-700 font-bold col-span-1 text-center">
-                        {stock.quantity}
-                      </span>
-                    )}
-                  </div>
-                </PriceDisplay>
+          <div className="flex-1 min-w-0">
+            <div className="bg-white rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden">
+              <div className="grid grid-cols-12 px-10 pt-10 pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                <span className="col-span-2">Asset</span>
+                <span className="col-span-2 text-center">Avg Price</span>
+                <span className="col-span-1 text-center">Qty</span>
+                <span className="col-span-2 text-right">Market Price</span>
+                <span className="col-span-2 text-right">24h</span>
+                <span className="col-span-1 text-right">Value</span>
+                <span className="col-span-2 text-right">Profit/Loss</span>
               </div>
-            ))}
-            
-            {stocks.length === 0 && (
-              <div className="p-20 text-center text-gray-300 font-bold uppercase tracking-widest text-xs">
-                Your portfolio is empty. Search above to begin.
+
+              <div className="divide-y divide-gray-50">
+                {stocks.map((stock) => (
+                  <div key={stock.symbol} className="p-10 hover:bg-gray-50/50 transition-all group relative">
+                    {isEditing && (
+                      <button 
+                        onClick={() => removeStock(stock.symbol)}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-xs p-2"
+                      >
+                        ✕
+                      </button>
+                    )}
+
+                    <PriceDisplay 
+                      symbol={stock.symbol} 
+                      avgPrice={stock.avgPrice}
+                      quantity={stock.quantity}
+                    >
+                      <div className="grid grid-cols-3 items-center justify-center gap-4">
+                        {isEditing ? (
+                          <div className="relative w-full col-span-2">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                            <input 
+                              type="number"
+                              value={stock.avgPrice || ''}
+                              onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
+                              className="w-full pl-7 pr-3 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-gray-700 font-bold col-span-2 text-center">
+                            ${stock.avgPrice.toFixed(2)}
+                          </span>
+                        )}
+
+                        {isEditing ? (
+                          <input 
+                            type="number"
+                            placeholder="Qty"
+                            value={stock.quantity || ''}
+                            onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
+                            className="w-full px-2 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold text-center focus:outline-none focus:bg-white transition-all text-sm col-span-1"
+                          />
+                        ) : (
+                          <span className="text-gray-700 font-bold col-span-1 text-center">
+                            {stock.quantity}
+                          </span>
+                        )}
+                      </div>
+                    </PriceDisplay>
+                  </div>
+                ))}
+
+                {stocks.length === 0 && (
+                  <div className="p-20 text-center text-gray-300 font-bold uppercase tracking-widest text-xs">
+                    Your portfolio is empty. Search above to begin.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {showChart && (
+              <div className="mt-4 relative">
+                <button
+                  onClick={() => setShowChart(false)}
+                  className="absolute top-1 left-1 text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Close
+                </button>
+                {chartLoading ? (
+                  <div className="text-center py-10">Loading…</div>
+                ) : (
+                  <PieChart data={chartData} />
+                )}
               </div>
             )}
           </div>
-        </div>
-        {/* chart trigger & display */}
-        <div className="mt-6 px-10">
-          <button
-            onClick={async () => {
-              try {
-                setChartLoading(true);
-                const results = await Promise.all(stocks.map(async (s) => {
-                  const res = await fetch(`/api/price/${s.symbol}`);
-                  const json = await res.json();
-                  const price = json.currentPrice || 0;
-                  const total = price * s.quantity;
-                  return { symbol: s.symbol, value: total };
-                }));
-                setChartData(results);
-                setShowChart(true);
-              } catch (e) {
-                console.error('Chart data error', e);
-              } finally {
-                setChartLoading(false);
-              }
-            }}
-            className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
-          >
-            Show Chart
-          </button>
-
-          {showChart && (
-            <div className="mt-4 relative">
-              <button
-                onClick={() => setShowChart(false)}
-                className="absolute top-1 left-1 text-xs text-gray-400 hover:text-gray-600"
-              >
-                Close
-              </button>
-              {chartLoading ? (
-                <div className="text-center py-10">Loading…</div>
-              ) : (
-                <PieChart data={chartData} />
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { calculateDCF } from '../../lib/dcf';
 
 type FormState = {
+  symbol: string;
   fcf: string;
   growthRate: string;
   discountRate: string;
@@ -16,6 +17,7 @@ type FormState = {
 };
 
 const initialForm: FormState = {
+  symbol: 'AAPL',
   fcf: '',
   growthRate: '',
   discountRate: '',
@@ -35,10 +37,20 @@ function formatCurrency(value: number) {
   });
 }
 
+function formatNumber(value: number, digits = 4) {
+  if (!Number.isFinite(value)) return '—';
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
 export default function DCFPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [result, setResult] = useState<ReturnType<typeof calculateDCF> | null>(null);
   const [error, setError] = useState('');
+  const [autofillLoading, setAutofillLoading] = useState(false);
+  const [showMathDemo, setShowMathDemo] = useState(false);
 
   const parsedValues = useMemo(() => {
     return {
@@ -53,8 +65,44 @@ export default function DCFPage() {
     };
   }, [form]);
 
+  const denominator = parsedValues.discountRate - parsedValues.terminalGrowth;
+
   const handleChange = (key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleAutofill = async () => {
+    setError('');
+    setResult(null);
+
+    const symbol = form.symbol.trim().toUpperCase();
+    if (!symbol) {
+      setError('Please enter a symbol first.');
+      return;
+    }
+
+    try {
+      setAutofillLoading(true);
+      const response = await fetch(`/api/dcf/financials?symbol=${encodeURIComponent(symbol)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to autofill values.');
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        symbol,
+        fcf: String(data.fcf ?? ''),
+        sharesOutstanding: String(data.shares ?? ''),
+        cashEquivalent: String(data.cash ?? 0),
+        totalDebt: String(data.debt ?? 0),
+      }));
+    } catch (autofillError) {
+      setError(autofillError instanceof Error ? autofillError.message : 'Autofill failed.');
+    } finally {
+      setAutofillLoading(false);
+    }
   };
 
   const handleCalculate = () => {
@@ -86,7 +134,7 @@ export default function DCFPage() {
 
   return (
     <div className="min-h-screen bg-[#fafafa] py-12 px-4 font-sans text-gray-900">
-      <div className="max-w-[1000px] mx-auto">
+      <div className="max-w-[1300px] mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-black tracking-tight">DCF Calculator</h1>
@@ -103,58 +151,127 @@ export default function DCFPage() {
           </Link>
         </div>
 
-        <div className="bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {([
-              ['fcf', 'Latest Free Cash Flow (FCF)'],
-              ['growthRate', 'Growth Rate (e.g. 0.08)'],
-              ['discountRate', 'Discount Rate (e.g. 0.10)'],
-              ['terminalGrowth', 'Terminal Growth (e.g. 0.025)'],
-              ['years', 'Projection Years'],
-              ['sharesOutstanding', 'Shares Outstanding'],
-              ['cashEquivalent', 'Cash & Cash Equivalent'],
-              ['totalDebt', 'Total Debt'],
-            ] as Array<[keyof FormState, string]>).map(([key, label]) => (
-              <div key={key}>
-                <label className="block text-[11px] font-black text-gray-500 uppercase tracking-widest mb-2">
-                  {label}
-                </label>
-                <input
-                  type="number"
-                  step={percentFields.includes(key) ? '0.001' : 'any'}
-                  value={form[key]}
-                  onChange={(event) => handleChange(key, event.target.value)}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
-                />
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
+          <div className="bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-6 lg:sticky lg:top-6">
+            <button
+              onClick={() => setShowMathDemo((prev) => !prev)}
+              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all text-left"
+            >
+              {showMathDemo ? 'Hide Math Demonstration ▲' : 'Show Math Demonstration ▼'}
+            </button>
+
+            {showMathDemo && (
+              <>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.22em] mt-4 mb-5">How DCF Is Calculated</p>
+                <div className="space-y-4 text-sm">
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">1) Project Cash Flows</p>
+                    <p className="font-bold text-gray-700">FCFᵧ = FCF₀ × (1 + g)^y</p>
+                    <p className="text-xs text-gray-500 mt-1">Using: {formatNumber(parsedValues.fcf, 2)} × (1 + {formatNumber(parsedValues.growthRate)})^y</p>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">2) Discount Each Year</p>
+                    <p className="font-bold text-gray-700">PVᵧ = FCFᵧ / (1 + r)^y</p>
+                    <p className="text-xs text-gray-500 mt-1">Using: FCFᵧ / (1 + {formatNumber(parsedValues.discountRate)})^y</p>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">3) Terminal Value</p>
+                    <p className="font-bold text-gray-700">TV = FCFₙ × (1 + gₜ) / (r - gₜ)</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Denominator: {formatNumber(parsedValues.discountRate)} - {formatNumber(parsedValues.terminalGrowth)} = {formatNumber(denominator)}
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">4) Equity & Per Share</p>
+                    <p className="font-bold text-gray-700">Equity = EV + Cash - Debt</p>
+                    <p className="font-bold text-gray-700">Value/Share = Equity / Shares</p>
+                    <p className="text-xs text-gray-500 mt-1">Shares input: {formatNumber(parsedValues.sharesOutstanding, 2)}</p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div>
+            <div className="bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-8">
+              <div className="mb-6 flex flex-col md:flex-row gap-3 md:items-end">
+                <div className="w-full md:max-w-[220px]">
+                  <label className="block text-[11px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                    Symbol
+                  </label>
+                  <input
+                    type="text"
+                    value={form.symbol}
+                    onChange={(event) => handleChange('symbol', event.target.value.toUpperCase())}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
+                    placeholder="AAPL"
+                  />
+                </div>
+                <button
+                  onClick={handleAutofill}
+                  disabled={autofillLoading}
+                  className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {autofillLoading ? 'Loading...' : 'Auto Fill'}
+                </button>
               </div>
-            ))}
-          </div>
 
-          <button
-            onClick={handleCalculate}
-            className="mt-8 w-full px-6 py-3 bg-blue-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 active:scale-[0.99]"
-          >
-            Calculate
-          </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {([
+                  ['fcf', 'Latest Free Cash Flow (FCF)'],
+                  ['growthRate', 'Growth Rate (e.g. 0.08)'],
+                  ['discountRate', 'Discount Rate (e.g. 0.10)'],
+                  ['terminalGrowth', 'Terminal Growth (e.g. 0.025)'],
+                  ['years', 'Projection Years'],
+                  ['sharesOutstanding', 'Shares Outstanding'],
+                  ['cashEquivalent', 'Cash & Cash Equivalent'],
+                  ['totalDebt', 'Total Debt'],
+                ] as Array<[keyof FormState, string]>).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block text-[11px] font-black text-gray-500 uppercase tracking-widest mb-2">
+                      {label}
+                    </label>
+                    <input
+                      type="number"
+                      step={percentFields.includes(key) ? '0.001' : 'any'}
+                      value={form[key]}
+                      onChange={(event) => handleChange(key, event.target.value)}
+                      className="w-full px-4 py-3 bg-gray-50 border border-transparent focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
 
-          {error && (
-            <div className="mt-5 px-4 py-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-sm font-bold">
-              {error}
+              <button
+                onClick={handleCalculate}
+                className="mt-8 w-full px-6 py-3 bg-blue-500 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 active:scale-[0.99]"
+              >
+                Calculate
+              </button>
+
+              {error && (
+                <div className="mt-5 px-4 py-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-sm font-bold">
+                  {error}
+                </div>
+              )}
             </div>
-          )}
+
+            {result && !error && (
+              <div className="mt-6 bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-8">
+                <h2 className="text-lg font-black mb-5">Results</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ResultCard label="Enterprise Value" value={`$${formatCurrency(result.enterpriseValue)}`} />
+                  <ResultCard label="Equity Value" value={`$${formatCurrency(result.equityValue)}`} />
+                  <ResultCard label="Intrinsic Value / Share" value={`$${formatCurrency(result.intrinsicValuePerShare)}`} />
+                  <ResultCard label="PV of Terminal Value" value={`$${formatCurrency(result.pvTerminalValue)}`} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-
-        {result && !error && (
-          <div className="mt-6 bg-white rounded-[2rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 p-8">
-            <h2 className="text-lg font-black mb-5">Results</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ResultCard label="Enterprise Value" value={`$${formatCurrency(result.enterpriseValue)}`} />
-              <ResultCard label="Equity Value" value={`$${formatCurrency(result.equityValue)}`} />
-              <ResultCard label="Intrinsic Value / Share" value={`$${formatCurrency(result.intrinsicValuePerShare)}`} />
-              <ResultCard label="PV of Terminal Value" value={`$${formatCurrency(result.pvTerminalValue)}`} />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
