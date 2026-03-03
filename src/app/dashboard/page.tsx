@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import PriceDisplay from '@/components/portfolio/PriceDisplay';
-import PieChart from '@/components/portfolio/PieChart';
+import Link from 'next/link';
+import PriceDisplay from '../../components/portfolio/PriceDisplay';
+import PieChart from '../../components/portfolio/PieChart';
 import { UserButton, SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 
 export default function DashboardPage() {
@@ -122,6 +123,13 @@ export default function DashboardPage() {
 
           <div className="flex items-center gap-4">
             {/* Action Buttons */}
+            <Link
+              href="/dcf"
+              className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
+            >
+              DCF Calc
+            </Link>
+
             <button 
               onClick={toggleEditMode}
               className={`px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 ${
