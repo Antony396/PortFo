@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [chartData, setChartData] = useState<{symbol:string;value:number}[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [showAiHelper, setShowAiHelper] = useState(true);
+  const [showMoreActions, setShowMoreActions] = useState(false);
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [sidebarRows, setSidebarRows] = useState<SidebarRow[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -284,6 +285,10 @@ export default function DashboardPage() {
     setShowAiHelper(true);
   };
 
+  const toggleMoreActions = () => {
+    setShowMoreActions((prev) => !prev);
+  };
+
   const userDisplayName =
     user?.username ||
     user?.fullName ||
@@ -406,7 +411,7 @@ export default function DashboardPage() {
 
         <div className="lg:hidden space-y-4 px-1">
           <div className="bg-white/5 rounded-2xl border border-white/10 shadow-sm p-4 flex flex-col gap-2 backdrop-blur-md">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               <SignedOut>
                 <SignInButton mode="modal">
                   <button className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all">
@@ -421,25 +426,37 @@ export default function DashboardPage() {
                   </button>
                 </SignOutButton>
               </SignedIn>
-              <Link
-                href="/dcf"
-                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 text-center"
-              >
-                DCF Calc
-              </Link>
+
               <button
-                onClick={fetchChartData}
+                onClick={toggleMoreActions}
                 className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
               >
-                Show Chart
+                {showMoreActions ? 'Less...' : 'More...'}
               </button>
+
+              {showMoreActions && (
+                <>
+                  <Link
+                    href="/dcf"
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 text-center"
+                  >
+                    DCF Calc
+                  </Link>
+                  <button
+                    onClick={fetchChartData}
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
+                  >
+                    Show Chart
+                  </button>
+                  <button
+                    onClick={toggleAiHelper}
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
+                  >
+                    AI Helper
+                  </button>
+                </>
+              )}
             </div>
-            <button
-              onClick={toggleAiHelper}
-              className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
-            >
-              AI Helper
-            </button>
           </div>
 
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -650,26 +667,36 @@ export default function DashboardPage() {
                   </button>
                 </SignOutButton>
               </SignedIn>
-
-              <Link
-                href="/dcf"
-                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all text-center"
-              >
-                DCF Calc
-              </Link>
               <button
-                onClick={fetchChartData}
+                onClick={toggleMoreActions}
                 className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
               >
-                Show Chart
+                {showMoreActions ? 'Less...' : 'More...'}
               </button>
 
-              <button
-                onClick={toggleAiHelper}
-                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
-              >
-                AI Helper
-              </button>
+              {showMoreActions && (
+                <>
+                  <Link
+                    href="/dcf"
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all text-center"
+                  >
+                    DCF Calc
+                  </Link>
+                  <button
+                    onClick={fetchChartData}
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+                  >
+                    Show Chart
+                  </button>
+
+                  <button
+                    onClick={toggleAiHelper}
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+                  >
+                    AI Helper
+                  </button>
+                </>
+              )}
             </div>
           </aside>
 
