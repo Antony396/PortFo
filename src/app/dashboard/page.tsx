@@ -21,12 +21,18 @@ export default function DashboardPage() {
     content: string;
   };
 
+  const defaultExamplePortfolio = [
+    { symbol: 'AAPL', quantity: 1, avgPrice: 100 },
+    { symbol: 'MSFT', quantity: 1, avgPrice: 100 },
+    { symbol: 'NVDA', quantity: 1, avgPrice: 100 },
+    { symbol: 'GOOGL', quantity: 1, avgPrice: 100 },
+    { symbol: 'AMZN', quantity: 1, avgPrice: 100 },
+    { symbol: 'META', quantity: 1, avgPrice: 100 },
+    { symbol: 'TSLA', quantity: 1, avgPrice: 100 },
+  ];
+
   // 1. Core Portfolio State
-  const [stocks, setStocks] = useState([
-    { symbol: 'AAPL', quantity: 1, avgPrice: 150 },
-    { symbol: 'MSFT', quantity: 3, avgPrice: 412 },
-    { symbol: 'NVDA', quantity: 3, avgPrice: 150 },
-  ]);
+  const [stocks, setStocks] = useState(defaultExamplePortfolio);
 
   // 2. UI & Search State
   const [newSymbol, setNewSymbol] = useState('');
