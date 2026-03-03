@@ -630,7 +630,7 @@ export default function DashboardPage() {
             <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
               <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
                 <span className="col-span-2">Asset</span>
-                <span className="col-span-2 text-center">Avg Price</span>
+                <span className="col-span-2 text-center">Avg Buy Price</span>
                 <span className="col-span-1 text-center">Qty</span>
                 <span className="col-span-2 text-right">Market Price</span>
                 <span className="col-span-2 text-center">24h</span>
@@ -835,7 +835,7 @@ export default function DashboardPage() {
               <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
               <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
                 <span className="col-span-2">Asset</span>
-                <span className="col-span-2 text-center">Avg Price</span>
+                <span className="col-span-2 text-center">Avg Buy Price</span>
                 <span className="col-span-1 text-center">Qty</span>
                 <span className="col-span-2 text-right">Market Price</span>
                 <span className="col-span-2 text-center">24h</span>
@@ -937,7 +937,7 @@ export default function DashboardPage() {
                       </div>
 
                       <p className="mt-2 text-[11px] font-medium text-blue-200/80">
-                        Enter quantity and buy price — average price updates automatically when merged.
+                        Enter quantity and buy price — average buy price updates automatically when merged.
                       </p>
                       {addStatus && <p className="mt-1 text-[11px] font-semibold text-blue-700">{addStatus}</p>}
 
