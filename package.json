@@ -4,8 +4,8 @@
   "description": "A professional stock portfolio tracker with real-time price updates and authentication",
   "main": "index.js",
   "scripts": {
-    "dev": "next dev",
-    "dev:clean": "powershell -NoProfile -Command \"if (Test-Path .next/dev/lock) { Remove-Item .next/dev/lock -Force -ErrorAction SilentlyContinue }; next dev\"",
+    "dev": "npm run dev:clean",
+    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$repo=(Get-Location).Path; Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine -match 'next dev' -and $_.CommandLine -match [regex]::Escape($repo) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 300; if (Test-Path .next/dev/lock) { Remove-Item .next/dev/lock -Force -ErrorAction SilentlyContinue }; next dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
