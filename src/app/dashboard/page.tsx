@@ -25,8 +25,6 @@ export default function DashboardPage() {
     { symbol: 'AAPL', quantity: 1, avgPrice: 100 },
     { symbol: 'MSFT', quantity: 1, avgPrice: 100 },
     { symbol: 'NVDA', quantity: 1, avgPrice: 100 },
-    { symbol: 'GOOGL', quantity: 1, avgPrice: 100 },
-    { symbol: 'AMZN', quantity: 1, avgPrice: 100 },
     { symbol: 'META', quantity: 1, avgPrice: 100 },
     { symbol: 'TSLA', quantity: 1, avgPrice: 100 },
   ];
@@ -557,6 +555,9 @@ export default function DashboardPage() {
                     Login
                   </button>
                 </SignInButton>
+                <div className="w-full px-3 py-2 rounded-xl border border-blue-300/20 bg-blue-500/10 text-blue-100 text-[11px] leading-relaxed">
+                  Create an account to make your portfolio and save it to your account.
+                </div>
               </SignedOut>
               <SignedIn>
                 <SignOutButton redirectUrl="/dashboard">
@@ -775,6 +776,9 @@ export default function DashboardPage() {
                     Login
                   </button>
                 </SignInButton>
+                <div className="w-full px-3 py-2 rounded-xl border border-blue-300/20 bg-blue-500/10 text-blue-100 text-[11px] leading-relaxed">
+                  Create an account to make your portfolio and save it to your account.
+                </div>
               </SignedOut>
 
               <SignedIn>
