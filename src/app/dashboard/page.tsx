@@ -6,6 +6,13 @@ import PieChart from '../../components/portfolio/PieChart';
 import { UserButton, SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 
 export default function DashboardPage() {
+  type SidebarRow = {
+    symbol: string;
+    value: number;
+    percentChange: number;
+    dayChangeValue: number;
+  };
+
   // 1. Core Portfolio State
   const [stocks, setStocks] = useState([
     { symbol: 'AAPL', quantity: 1, avgPrice: 150 },
@@ -15,14 +22,19 @@ export default function DashboardPage() {
 
   // 2. UI & Search State
   const [newSymbol, setNewSymbol] = useState('');
+  const [newQuantity, setNewQuantity] = useState('');
+  const [newBuyPrice, setNewBuyPrice] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [addStatus, setAddStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('Save Portfolio');
   const [isEditing, setIsEditing] = useState(false);
   const [editBackup, setEditBackup] = useState<any[]>([]);
   const [showChart, setShowChart] = useState(false);
   const [chartData, setChartData] = useState<{symbol:string;value:number}[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [sidebarRows, setSidebarRows] = useState<SidebarRow[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // --- PERSISTENCE LOGIC ---
@@ -55,6 +67,12 @@ export default function DashboardPage() {
       setStocks(editBackup);
       setIsEditing(false);
       setEditBackup([]);
+      setNewSymbol('');
+      setNewQuantity('');
+      setNewBuyPrice('');
+      setSuggestions([]);
+      setShowDropdown(false);
+      setAddStatus('');
     } else {
       // Enter edit mode - save backup
       setEditBackup(JSON.parse(JSON.stringify(stocks)));
@@ -79,7 +97,12 @@ export default function DashboardPage() {
       try {
         const res = await fetch(`/api/search?q=${query.toUpperCase()}`);
         const data = await res.json();
-        setSuggestions(data.result || []);
+        const rawResults = data.result || [];
+        const uniqueResults = rawResults.filter(
+          (item: any, index: number, arr: any[]) =>
+            arr.findIndex((entry: any) => entry.symbol === item.symbol) === index
+        );
+        setSuggestions(uniqueResults);
         setShowDropdown(true);
       } catch (e) {
         console.error("Search error", e);
@@ -90,13 +113,62 @@ export default function DashboardPage() {
     }
   };
 
-  const addStock = (item: any) => {
-    const ticker = item.symbol.toUpperCase();
-    if (!stocks.find(s => s.symbol === ticker)) {
-      setStocks([...stocks, { symbol: ticker, quantity: 0, avgPrice: 0 }]);
+  const selectSuggestion = (item: any) => {
+    const ticker = String(item.symbol || '').toUpperCase();
+    if (ticker) {
+      setNewSymbol(ticker);
     }
-    setNewSymbol('');
     setShowDropdown(false);
+  };
+
+  const addOrMergeHolding = () => {
+    const ticker = newSymbol.trim().toUpperCase();
+    const qtyToAdd = parseFloat(newQuantity);
+    const buyPrice = parseFloat(newBuyPrice);
+
+    if (!ticker) {
+      setAddStatus('Enter a ticker first');
+      return;
+    }
+
+    if (!(qtyToAdd > 0) || !(buyPrice > 0)) {
+      setAddStatus('Enter quantity and buy price');
+      return;
+    }
+
+    let merged = false;
+    setStocks((prev) => {
+      const existing = prev.find((stock) => stock.symbol === ticker);
+
+      if (!existing) {
+        return [...prev, { symbol: ticker, quantity: qtyToAdd, avgPrice: buyPrice }];
+      }
+
+      merged = true;
+      const combinedQuantity = existing.quantity + qtyToAdd;
+      const combinedAvgPrice =
+        combinedQuantity > 0
+          ? (existing.quantity * existing.avgPrice + qtyToAdd * buyPrice) / combinedQuantity
+          : buyPrice;
+
+      return prev.map((stock) =>
+        stock.symbol === ticker
+          ? {
+              ...stock,
+              quantity: parseFloat(combinedQuantity.toFixed(6)),
+              avgPrice: parseFloat(combinedAvgPrice.toFixed(6)),
+            }
+          : stock
+      );
+    });
+
+    setAddStatus(merged ? 'Lot merged into holding' : 'New holding added');
+    setNewSymbol('');
+    setNewQuantity('');
+    setNewBuyPrice('');
+    setSuggestions([]);
+    setShowDropdown(false);
+    setTimeout(() => setAddStatus(''), 2000);
   };
 
   const removeStock = (symbol: string) => {
@@ -107,6 +179,54 @@ export default function DashboardPage() {
     const numVal = val === '' ? 0 : parseFloat(val);
     setStocks(prev => prev.map(s => s.symbol === symbol ? { ...s, [field]: numVal } : s));
   };
+
+  useEffect(() => {
+    const loadSidebarMetrics = async () => {
+      if (stocks.length === 0) {
+        setSidebarRows([]);
+        return;
+      }
+
+      setSidebarLoading(true);
+      try {
+        const metrics = await Promise.all(
+          stocks.map(async (stock) => {
+            try {
+              const res = await fetch(`/api/price/${stock.symbol}`);
+              const json = await res.json();
+              const currentPrice = json.currentPrice || 0;
+              const percentChange = json.percentChange || 0;
+              const value = currentPrice * stock.quantity;
+              const dayChangeValue = value * (percentChange / 100);
+
+              return {
+                symbol: stock.symbol,
+                value,
+                percentChange,
+                dayChangeValue,
+              } as SidebarRow;
+            } catch {
+              return {
+                symbol: stock.symbol,
+                value: 0,
+                percentChange: 0,
+                dayChangeValue: 0,
+              } as SidebarRow;
+            }
+          })
+        );
+
+        setSidebarRows(metrics);
+      } finally {
+        setSidebarLoading(false);
+      }
+    };
+
+    loadSidebarMetrics();
+  }, [stocks]);
+
+  const totalValue = sidebarRows.reduce((sum, row) => sum + row.value, 0);
+  const totalDayChange = sidebarRows.reduce((sum, row) => sum + row.dayChangeValue, 0);
 
   const fetchChartData = async () => {
     if (showChart) {
@@ -133,126 +253,76 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] py-12 px-4 font-sans text-gray-900">
-      <div className="max-w-[1300px] mx-auto relative">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-8 md:py-12 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
+      <div className="hidden lg:block fixed inset-y-0 left-0 w-[220px] bg-white/5 border-r border-white/10 backdrop-blur-sm pointer-events-none" />
+      <div className="hidden lg:block fixed inset-y-0 right-0 w-[340px] bg-white/5 border-l border-white/10 backdrop-blur-sm pointer-events-none" />
+      <div className="w-full relative z-10">
         
         {/* HEADER SECTION */}
-        <div className="flex justify-between items-end px-10 mb-10">
+        <div className="px-2 md:px-10 mb-8">
           <div>
             <h2 className="text-3xl font-black tracking-tight flex items-center gap-2">
-              Wall St <span className="text-blue-500 text-2xl">☁️</span>
+              PortFo
             </h2>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.4em] mt-1">Live Portfolio</p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Action Buttons */}
-            <button 
-              onClick={toggleEditMode}
-              className={`px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 ${
-                isEditing 
-                  ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600' 
-                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-              }`}
-            >
-              {isEditing ? 'Cancel' : 'Edit Portfolio'}
-            </button>
-
-            {isEditing && (
-            <button 
-              onClick={manualSave}
-              className="px-5 py-3 bg-green-500 text-white border border-green-500 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-green-600 transition-all shadow-sm active:scale-95"
-            >
-              {saveStatus}
-            </button>
-          )}
-
-
-
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button className="px-6 py-3 bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 active:scale-95">
-                  Sync to Account
-                </button>
-              </SignInButton>
-            </SignedOut>
-
-            <SignedIn>
-              <div className="bg-white p-1 rounded-full border border-gray-100 shadow-sm hover:scale-105 transition-transform">
-                <UserButton afterSignOutUrl="/dashboard" />
-              </div>
-            </SignedIn>
-
-            {/* SEARCH BAR */}
-            {isEditing && (
-              <div className="relative" ref={dropdownRef}>
-                <input 
-                  type="text"
-                  placeholder="Add Ticker (e.g. NVDA)"
-                  value={newSymbol}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  onFocus={() => setShowDropdown(true)}
-                  className="px-6 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-bold focus:outline-none focus:border-blue-500 shadow-sm w-[280px] transition-all"
-                />
-
-                {showDropdown && suggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
-                    {suggestions.map((item) => (
-                      <button
-                        key={item.symbol}
-                        onClick={() => addStock(item)}
-                        className="w-full flex items-center justify-between px-5 py-3 hover:bg-blue-50 transition-colors text-left border-b border-gray-50 last:border-0"
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-black text-sm">{item.symbol}</span>
-                          <span className="text-[9px] text-gray-400 font-bold uppercase truncate max-w-[180px]">
-                            {item.description}
-                          </span>
-                        </div>
-                        <span className="text-blue-500 font-bold text-[10px] uppercase">Add +</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.18em] mt-1">Live Portfolio</p>
           </div>
         </div>
 
 
-        <div className="flex items-start gap-6 pl-2 pr-10">
-          <aside className="w-[180px] shrink-0">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-[0_20px_45px_rgba(0,0,0,0.03)] p-4 flex flex-col gap-3 sticky top-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[190px_minmax(0,1fr)_300px] items-stretch lg:items-start gap-6 pl-0 pr-0 md:pr-2 lg:pr-0">
+          <aside className="w-full shrink-0">
+            <div className="bg-white/5 rounded-2xl border border-white/10 shadow-sm p-4 flex flex-col gap-3 lg:sticky lg:top-6 backdrop-blur-md">
               <Link
                 href="/dcf"
-                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all text-center"
+                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all text-center"
               >
                 DCF Calc
               </Link>
               <button
                 onClick={fetchChartData}
-                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all"
+                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
               >
                 Show Chart
               </button>
+
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all shadow-sm active:scale-95">
+                    Login
+                  </button>
+                </SignInButton>
+              </SignedOut>
+
+              <SignedIn>
+                <div className="w-full flex items-center justify-center bg-white/10 p-2 rounded-xl border border-white/10 shadow-sm">
+                  <UserButton afterSignOutUrl="/dashboard" />
+                </div>
+              </SignedIn>
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0">
-            <div className="bg-white rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden">
-              <div className="grid grid-cols-12 px-10 pt-10 pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+          <div className="min-w-0">
+            <div className="mb-5 px-1 flex justify-center">
+              <p className="text-sm font-semibold tracking-[0.02em] text-blue-100 text-center">
+                Create, Merge, and Track Your Holdings
+              </p>
+            </div>
+
+            <div className="overflow-x-auto overflow-y-visible">
+              <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
+              <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
                 <span className="col-span-2">Asset</span>
                 <span className="col-span-2 text-center">Avg Price</span>
                 <span className="col-span-1 text-center">Qty</span>
                 <span className="col-span-2 text-right">Market Price</span>
-                <span className="col-span-2 text-right">24h</span>
+                <span className="col-span-2 text-center">24h</span>
                 <span className="col-span-1 text-right">Value</span>
                 <span className="col-span-2 text-right">Profit/Loss</span>
               </div>
 
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-white/10">
                 {stocks.map((stock) => (
-                  <div key={stock.symbol} className="p-10 hover:bg-gray-50/50 transition-all group relative">
+                  <div key={stock.symbol} className="px-8 py-6 hover:bg-white/5 transition-all group relative">
                     {isEditing && (
                       <button 
                         onClick={() => removeStock(stock.symbol)}
@@ -270,16 +340,16 @@ export default function DashboardPage() {
                       <div className="grid grid-cols-3 items-center justify-center gap-4">
                         {isEditing ? (
                           <div className="relative w-full col-span-2">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-xs">$</span>
                             <input 
                               type="number"
                               value={stock.avgPrice || ''}
                               onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                              className="w-full pl-7 pr-3 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
+                              className="w-full pl-7 pr-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
                             />
                           </div>
                         ) : (
-                          <span className="text-gray-700 font-bold col-span-2 text-center">
+                          <span className="text-slate-100 font-bold col-span-2 text-center">
                             ${stock.avgPrice.toFixed(2)}
                           </span>
                         )}
@@ -290,10 +360,10 @@ export default function DashboardPage() {
                             placeholder="Qty"
                             value={stock.quantity || ''}
                             onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                            className="w-full px-2 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold text-center focus:outline-none focus:bg-white transition-all text-sm col-span-1"
+                            className="w-full px-2 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-sm col-span-1"
                           />
                         ) : (
-                          <span className="text-gray-700 font-bold col-span-1 text-center">
+                          <span className="text-slate-100 font-bold col-span-1 text-center">
                             {stock.quantity}
                           </span>
                         )}
@@ -303,18 +373,104 @@ export default function DashboardPage() {
                 ))}
 
                 {stocks.length === 0 && (
-                  <div className="p-20 text-center text-gray-300 font-bold uppercase tracking-widest text-xs">
+                  <div className="p-20 text-center text-blue-200/70 font-bold uppercase tracking-widest text-xs">
                     Your portfolio is empty. Search above to begin.
                   </div>
                 )}
+
+                {isEditing && (
+                  <div className="px-8 py-5 bg-white/5 border-t border-white/10">
+                    <div className="relative" ref={dropdownRef}>
+                      <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Ticker (e.g. IVV.AX)"
+                          value={newSymbol}
+                          onChange={(e) => handleSearchChange(e.target.value)}
+                          onFocus={() => setShowDropdown(true)}
+                          className="col-span-1 md:col-span-5 px-4 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 shadow-sm transition-all"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Qty"
+                          value={newQuantity}
+                          onChange={(e) => setNewQuantity(e.target.value)}
+                          className="col-span-1 md:col-span-2 px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold text-center focus:outline-none focus:border-blue-400 shadow-sm transition-all"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Buy Price"
+                          value={newBuyPrice}
+                          onChange={(e) => setNewBuyPrice(e.target.value)}
+                          className="col-span-1 md:col-span-3 px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold text-center focus:outline-none focus:border-blue-400 shadow-sm transition-all"
+                        />
+                        <button
+                          onClick={addOrMergeHolding}
+                          className="col-span-1 md:col-span-2 px-3 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      <p className="mt-2 text-[11px] font-medium text-blue-200/80">
+                        Enter quantity and buy price — average price updates automatically when merged.
+                      </p>
+                      {addStatus && <p className="mt-1 text-[11px] font-semibold text-blue-700">{addStatus}</p>}
+
+                      {showDropdown && suggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
+                          {suggestions.map((item) => (
+                            <button
+                              key={item.symbol}
+                              onClick={() => selectSuggestion(item)}
+                              className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
+                                <span className="text-[10px] text-blue-200/70 font-medium truncate max-w-[280px]">
+                                  {item.description}
+                                </span>
+                              </div>
+                              <span className="text-blue-300 font-semibold text-[11px]">Use</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-start gap-3">
+              <button
+                onClick={toggleEditMode}
+                className={`px-5 py-2.5 border rounded-xl text-[12px] font-semibold transition-all shadow-sm active:scale-95 ${
+                  isEditing
+                    ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600'
+                    : 'bg-white/10 border-white/15 text-blue-100 hover:bg-white/15'
+                }`}
+              >
+                {isEditing ? 'Cancel' : 'Edit Portfolio'}
+              </button>
+
+              {isEditing && (
+                <button
+                  onClick={manualSave}
+                  className="px-5 py-2.5 bg-green-500 text-white border border-green-500 rounded-xl text-[12px] font-semibold hover:bg-green-600 transition-all shadow-sm active:scale-95"
+                >
+                  {saveStatus}
+                </button>
+              )}
             </div>
 
             {showChart && (
               <div className="mt-4 relative">
                 <button
                   onClick={() => setShowChart(false)}
-                  className="absolute top-1 left-1 text-xs text-gray-400 hover:text-gray-600"
+                  className="absolute top-2 left-3 text-xs text-blue-200/80 hover:text-blue-100 z-10"
                 >
                   Close
                 </button>
@@ -326,6 +482,40 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          <aside className="w-full shrink-0">
+            <div className="w-full bg-white/5 rounded-2xl border border-white/10 shadow-sm p-4 lg:sticky lg:top-2 lg:-mt-3 backdrop-blur-md">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">Overview</p>
+                {sidebarLoading ? (
+                  <p className="mt-3 text-sm font-medium text-blue-100">Loading…</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Value</p>
+                      <p className="text-sm font-semibold text-white">${totalValue.toFixed(2)}</p>
+                    </div>
+
+                    <div className="h-px bg-white/10" />
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Day Change</p>
+                      <p className={`text-sm font-semibold ${totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {totalDayChange >= 0 ? '+' : ''}${Math.abs(totalDayChange).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div className="h-px bg-white/10" />
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Holdings</p>
+                      <p className="text-sm font-semibold text-white">{stocks.length}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

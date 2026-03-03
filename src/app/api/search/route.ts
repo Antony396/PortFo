@@ -18,13 +18,58 @@ export async function GET(request: Request) {
     
     const data = await response.json();
 
-    // Finnhub returns an object with a 'result' array
-    // We filter it to only show Stocks and Crypto to keep it clean
-    const filteredResults = data.result
-      .filter((item: any) => item.type === 'Common Stock' || item.type === 'Crypto')
-      .slice(0, 8); // Only show top 8 results
+    const normalizedQuery = query.toUpperCase();
+    const isAsxItem = (item: any) => {
+      const symbol = String(item.symbol || '').toUpperCase();
+      const displaySymbol = String(item.displaySymbol || '').toUpperCase();
+      const description = String(item.description || '').toUpperCase();
 
-    return NextResponse.json({ result: filteredResults });
+      return (
+        symbol.endsWith('.AX') ||
+        symbol.startsWith('ASX:') ||
+        displaySymbol.endsWith('.AX') ||
+        displaySymbol.startsWith('ASX:') ||
+        description.includes('ASX')
+      );
+    };
+
+    const isAllowedType = (type: string) =>
+      [
+        'Common Stock',
+        'ETF',
+        'ETP',
+        'Mutual Fund',
+        'Fund',
+        'Crypto',
+      ].includes(type);
+
+    const rankedResults = (data.result || [])
+      .filter((item: any) => {
+        const symbol = String(item.symbol || '').toUpperCase();
+        const type = String(item.type || '');
+        return isAllowedType(type) || isAsxItem(item) || symbol.includes('.AX');
+      })
+      .sort((a: any, b: any) => {
+        const symbolA = String(a.symbol || '').toUpperCase();
+        const symbolB = String(b.symbol || '').toUpperCase();
+        const asxA = isAsxItem(a) ? 1 : 0;
+        const asxB = isAsxItem(b) ? 1 : 0;
+
+        const aExact = symbolA === normalizedQuery ? 1 : 0;
+        const bExact = symbolB === normalizedQuery ? 1 : 0;
+        if (aExact !== bExact) return bExact - aExact;
+
+        if (asxA !== asxB) return asxB - asxA;
+
+        const aStarts = symbolA.startsWith(normalizedQuery) ? 1 : 0;
+        const bStarts = symbolB.startsWith(normalizedQuery) ? 1 : 0;
+        if (aStarts !== bStarts) return bStarts - aStarts;
+
+        return symbolA.localeCompare(symbolB);
+      })
+      .slice(0, 10);
+
+    return NextResponse.json({ result: rankedResults });
   } catch (error) {
     console.error("Search API Error:", error);
     return NextResponse.json({ error: 'Failed to search' }, { status: 500 });

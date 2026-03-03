@@ -61,6 +61,12 @@ Required environment variables:
 npm run dev
 ```
 
+If you hit a stale Next.js lock file on Windows, use:
+
+```bash
+npm run dev:clean
+```
+
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Project Structure
@@ -83,7 +89,7 @@ src/
 │   └── utils.ts         # General helper functions
 ├── types/
 │   └── portfolio.d.ts   # TypeScript type definitions
-└── middleware.ts        # Clerk authentication middleware
+└── proxy.ts             # Clerk route protection (Next.js proxy convention)
 ```
 
 ## API Endpoints

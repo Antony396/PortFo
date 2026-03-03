@@ -25,10 +25,10 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
   // Show a skeleton while loading the very first time
   if (loading && !data) {
     return (
-      <div className="grid grid-cols-12 items-center w-full h-24 bg-gray-50/50 animate-pulse rounded-[2rem] px-10">
+      <div className="grid grid-cols-12 items-center w-full h-24 bg-white/5 animate-pulse rounded-[2rem] px-8">
         <div className="col-span-2 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gray-200" />
-          <div className="h-4 w-20 bg-gray-200 rounded" />
+          <div className="w-12 h-12 rounded-2xl bg-white/10" />
+          <div className="h-4 w-20 bg-white/10 rounded" />
         </div>
         <div className="col-span-3">{children}</div>
       </div>
@@ -49,7 +49,7 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
     <div className="grid grid-cols-12 items-center w-full">
       {/* 1. ASSET SECTION */}
       <div className="col-span-2 flex items-center gap-4 min-w-0">
-        <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shrink-0 shadow-sm p-1.5 transition-transform hover:scale-105">
+        <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center shrink-0 shadow-sm p-1.5 transition-transform hover:scale-105">
           {data?.logo ? (
             <img 
               src={data.logo} 
@@ -57,14 +57,14 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
               className="w-full h-full object-contain rounded-xl overflow-hidden" 
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center font-bold text-[10px] bg-gray-50 text-gray-400">
+            <div className="w-full h-full flex items-center justify-center font-bold text-[10px] bg-white/10 text-blue-200/80 rounded-xl">
               {symbol.substring(0,3)}
             </div>
           )}
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="font-extrabold text-gray-900 text-lg truncate leading-none">{symbol}</span>
-          <span className="text-[10px] font-bold text-gray-400 uppercase mt-1 truncate">
+          <span className="font-extrabold text-slate-100 text-lg truncate leading-none">{symbol}</span>
+          <span className="text-[10px] font-bold text-blue-200/70 uppercase mt-1 truncate">
             {data?.companyName || 'Unknown Corp'}
           </span>
         </div>
@@ -76,34 +76,32 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
       </div>
 
       {/* 3. PRICE */}
-      <div className="col-span-2 flex flex-col items-end pr-2">
-        <span className="font-bold text-gray-900 text-lg">
+      <div className="col-span-2 flex flex-col items-end tabular-nums">
+        <span className="font-bold text-slate-100 text-lg leading-none">
           ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
-        <span className="text-[8px] font-black text-gray-300 uppercase tracking-tighter">Current</span>
       </div>
 
       {/* 4. DAY CHG */}
-      <div className="col-span-2 flex justify-end">
+      <div className="col-span-2 flex justify-center">
         <div className={`px-2 py-0.5 rounded-lg text-[11px] font-bold ${isDayPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
           {isDayPositive ? '▲' : '▼'}{Math.abs(data?.percentChange ?? 0).toFixed(2)}%
         </div>
       </div>
 
       {/* 5. TOTAL VALUE */}
-      <div className="col-span-1 flex flex-col items-end ml-4">
-        <span className="font-bold text-gray-900 text-lg">
+      <div className="col-span-1 flex flex-col items-end tabular-nums">
+        <span className="font-bold text-slate-100 text-lg leading-none">
           ${currentTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
-        <span className="text-[8px] font-black text-gray-300 uppercase tracking-tighter">Value</span>
       </div>
 
       {/* 6. PROFIT/LOSS */}
-      <div className="col-span-2 flex flex-col items-end">
-        <span className={`font-bold text-lg ${isGain ? 'text-emerald-500' : 'text-rose-500'}`}>
+      <div className="col-span-2 flex flex-col items-end tabular-nums">
+        <span className={`font-bold text-lg leading-none ${isGain ? 'text-emerald-500' : 'text-rose-500'}`}>
           {isGain ? '+' : '-'}${Math.abs(totalGainedDollars).toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
-        <span className={`text-[10px] font-black uppercase ${isGain ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+        <span className={`mt-1 text-[10px] font-black uppercase ${isGain ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
           {totalReturnPercent.toFixed(2)}%
         </span>
       </div>
