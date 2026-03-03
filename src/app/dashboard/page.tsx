@@ -6,7 +6,7 @@ import PieChart from '../../components/portfolio/PieChart';
 import { SignInButton, SignOutButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs";
 
 export default function DashboardPage() {
-  const { user } = useUser();
+  const { user, isSignedIn, isLoaded } = useUser();
 
   type SidebarRow = {
     symbol: string;
@@ -56,24 +56,80 @@ export default function DashboardPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // --- PERSISTENCE LOGIC ---
-  useEffect(() => {
+  const loadLocalPortfolio = () => {
     const saved = localStorage.getItem('my_portfolio');
-    if (saved) {
-      try {
-        setStocks(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load portfolio:", e);
-      }
+    if (!saved) return;
+
+    try {
+      setStocks(JSON.parse(saved));
+    } catch (error) {
+      console.error('Failed to load local portfolio:', error);
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const loadPortfolio = async () => {
+      if (!isSignedIn) {
+        loadLocalPortfolio();
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/portfolio', { cache: 'no-store' });
+
+        if (!response.ok) {
+          loadLocalPortfolio();
+          return;
+        }
+
+        const data = await response.json();
+        if (Array.isArray(data?.holdings) && data.holdings.length > 0) {
+          setStocks(data.holdings);
+          return;
+        }
+
+        loadLocalPortfolio();
+      } catch (error) {
+        console.error('Failed to load account portfolio:', error);
+        loadLocalPortfolio();
+      }
+    };
+
+    loadPortfolio();
+  }, [isLoaded, isSignedIn]);
 
   useEffect(() => {
     localStorage.setItem('my_portfolio', JSON.stringify(stocks));
   }, [stocks]);
 
-  const manualSave = () => {
+  const manualSave = async () => {
+    setSaveStatus('Saving...');
+
+    let accountSaved = false;
+    if (isSignedIn) {
+      try {
+        const response = await fetch('/api/portfolio', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ holdings: stocks }),
+        });
+
+        accountSaved = response.ok;
+      } catch (error) {
+        console.error('Failed to save account portfolio:', error);
+      }
+    }
+
     localStorage.setItem('my_portfolio', JSON.stringify(stocks));
-    setSaveStatus('Saved To Browser');
+    setSaveStatus(
+      isSignedIn
+        ? accountSaved
+          ? 'Saved To Account'
+          : 'Saved Local Only'
+        : 'Saved To Browser'
+    );
     setIsEditing(false);
     setEditBackup([]);
     setTimeout(() => setSaveStatus('Save Portfolio'), 2000);

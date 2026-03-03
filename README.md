@@ -7,6 +7,7 @@ A modern, professional stock portfolio tracking application built with Next.js 1
 **Real-time Stock Prices** - Fetches live stock quotes from Finnhub API
 **Secure Authentication** - User authentication powered by Clerk
 **Portfolio Management** - Add, remove, and track your stock holdings
+**Account Cloud Save** - Signed-in users can load/save portfolios to Supabase
 **Comprehensive Analytics** - View gains/losses, percentages, and portfolio value
 **Responsive Design** - Mobile-first UI built with Tailwind CSS
 **Server-Side Rendering** - Optimized performance with Next.js App Router
@@ -55,6 +56,10 @@ Required environment variables:
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk public key
 - `CLERK_SECRET_KEY` - Clerk secret key
 
+Optional environment variables (required only for account cloud save):
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (server-only)
+
 ### 4. Run Development Server
 
 ```bash
@@ -83,7 +88,7 @@ src/
 │   └── portfolio/        # Portfolio UI components
 ├── services/
 │   ├── finnhub.ts       # Finnhub API integration
-│   └── database.ts      # Database layer (for future use)
+│   └── database.ts      # Supabase REST persistence helpers
 ├── lib/
 │   ├── calculations.ts  # Portfolio calculation utilities
 │   └── utils.ts         # General helper functions
@@ -107,6 +112,24 @@ Returns current price, change, percent change, and company info for a stock symb
 Searches for stocks matching the query.
 
 **Example**: `/api/search?q=Apple`
+
+### Portfolio (Account Save)
+`GET /api/portfolio`
+
+Returns the signed-in user's saved holdings from Supabase. If Supabase is not configured, returns an empty portfolio.
+
+`PUT /api/portfolio`
+
+Saves the signed-in user's holdings to Supabase.
+
+### Health Check
+`GET /api/health`
+
+Returns deployment health and environment readiness without exposing secret values.
+
+- `200` when core app environment variables are configured
+- `503` when one or more required core variables are missing
+- Includes `features.accountSave.ready` to indicate whether cloud save env vars are configured
 
 ## Development
 
@@ -142,13 +165,18 @@ npm start
 
 ### Authentication
 - Secure user authentication with Clerk
-- Protected dashboard routes
-- User-specific portfolio persistence
+- Public dashboard access with optional sign in
+- User-specific cloud portfolio persistence when signed in
 - Sign in/sign up pages
+
+### Portfolio Persistence
+- Guest users: portfolio is stored in browser localStorage
+- Signed-in users: manual save writes to Supabase and browser localStorage
+- Signed-in users: dashboard load prioritizes Supabase holdings
 
 ## Security Considerations
 
--  Middleware protection on authenticated routes
+-  Authenticated API checks on account-save endpoints
 -  API keys stored in environment variables (never exposed to client)
 -  TypeScript strict mode enabled
 -  Input validation on all API endpoints
@@ -178,7 +206,24 @@ npm start
 | `FINNHUB_API_KEY` | Finnhub stock data API key | Yes |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk public key | Yes |
 | `CLERK_SECRET_KEY` | Clerk secret key | Yes |
-| `DATABASE_URL` | Database connection string | No (future) |
+| `SUPABASE_URL` | Supabase project URL for account save | No* |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key for account save API | No* |
+
+\* Required if you want signed-in account cloud save. Without these, the app still works with local browser storage.
+
+## Supabase Setup (Account Save)
+
+Create a `portfolios` table in Supabase SQL editor:
+
+```sql
+create table if not exists public.portfolios (
+	user_id text primary key,
+	holdings jsonb not null default '[]'::jsonb,
+	updated_at timestamptz not null default now()
+);
+```
+
+Then add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to your `.env.local` (and Vercel project env vars for production).
 
 ## Troubleshooting
 
@@ -194,6 +239,11 @@ npm start
 - Verify Clerk keys are set correctly in `.env.local`
 - Clear browser cookies and try again
 - Check Clerk dashboard for user status
+
+### Verify deployment env configuration
+- Open `/api/health` on your deployed app
+- Confirm `status` is `ok`
+- For cloud save, confirm `features.accountSave.ready` is `true`
 
 ## Contributing
 
