@@ -327,6 +327,67 @@ export default function DashboardPage() {
     }
   };
 
+  const aiHelperPanel = (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4">
+      <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">AI Helper</p>
+      <p className="mt-1 text-[10px] text-blue-200/70">
+        By using AI Helper, you agree to our{' '}
+        <Link href="/privacy" className="underline hover:text-blue-100 transition-colors">
+          Privacy Policy
+        </Link>{' '}
+        and{' '}
+        <Link href="/ai-disclaimer" className="underline hover:text-blue-100 transition-colors">
+          AI Disclaimer
+        </Link>
+        .
+      </p>
+
+      <div className="mt-3 max-h-[260px] overflow-y-auto space-y-2 pr-1">
+        {chatMessages.map((entry, index) => (
+          <div
+            key={`${entry.role}-${index}`}
+            className={`rounded-lg px-3 py-2 text-[12px] leading-relaxed ${
+              entry.role === 'assistant'
+                ? 'bg-white/10 text-blue-100 border border-white/10'
+                : 'bg-blue-600/80 text-white border border-blue-400/40'
+            }`}
+          >
+            {entry.content}
+          </div>
+        ))}
+        {chatLoading && (
+          <div className="rounded-lg px-3 py-2 text-[12px] bg-white/10 text-blue-200 border border-white/10">
+            Thinking…
+          </div>
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <input
+          type="text"
+          value={chatInput}
+          onChange={(event) => setChatInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              sendChatMessage();
+            }
+          }}
+          placeholder="Ask about your holdings"
+          className="flex-1 px-3 py-2 bg-slate-800/80 text-slate-100 border border-white/10 rounded-lg text-[12px] font-medium focus:outline-none focus:border-blue-400"
+        />
+        <button
+          onClick={sendChatMessage}
+          disabled={chatLoading}
+          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-[12px] font-semibold hover:bg-blue-700 transition-all disabled:opacity-60"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-8 md:py-12 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
       <div className="hidden lg:block fixed inset-y-0 left-0 w-[220px] bg-white/5 border-r border-white/10 backdrop-blur-sm pointer-events-none" />
@@ -343,8 +404,232 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        <div className="lg:hidden space-y-4 px-1">
+          <div className="bg-white/5 rounded-2xl border border-white/10 shadow-sm p-4 flex flex-col gap-2 backdrop-blur-md">
+            <div className="grid grid-cols-2 gap-2">
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all">
+                    Login
+                  </button>
+                </SignInButton>
+              </SignedOut>
+              <SignedIn>
+                <SignOutButton redirectUrl="/dashboard">
+                  <button className="w-full px-4 py-2.5 bg-white/10 border border-white/10 rounded-xl text-[12px] font-semibold text-blue-50 truncate">
+                    Logout
+                  </button>
+                </SignOutButton>
+              </SignedIn>
+              <Link
+                href="/dcf"
+                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 text-center"
+              >
+                DCF Calc
+              </Link>
+              <button
+                onClick={fetchChartData}
+                className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
+              >
+                Show Chart
+              </button>
+            </div>
+            <button
+              onClick={toggleAiHelper}
+              className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
+            >
+              AI Helper
+            </button>
+          </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[190px_minmax(0,1fr)_300px] items-stretch lg:items-start gap-6 pl-0 pr-0 md:pr-2 lg:pr-0">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">Overview</p>
+            {sidebarLoading ? (
+              <p className="mt-3 text-sm font-medium text-blue-100">Loading…</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Value</p>
+                  <p className="text-sm font-semibold text-white">${totalValue.toFixed(2)}</p>
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Day Change</p>
+                  <p className={`text-sm font-semibold ${totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {totalDayChange >= 0 ? '+' : ''}${Math.abs(totalDayChange).toFixed(2)}
+                  </p>
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Holdings</p>
+                  <p className="text-sm font-semibold text-white">{stocks.length}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[10px] text-blue-200/70 uppercase tracking-[0.1em]">Swipe table left/right to view all columns</p>
+          <div className="overflow-x-auto overflow-y-visible">
+            <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
+              <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
+                <span className="col-span-2">Asset</span>
+                <span className="col-span-2 text-center">Avg Price</span>
+                <span className="col-span-1 text-center">Qty</span>
+                <span className="col-span-2 text-right">Market Price</span>
+                <span className="col-span-2 text-center">24h</span>
+                <span className="col-span-1 text-right">Value</span>
+                <span className="col-span-2 text-right">Profit/Loss</span>
+              </div>
+
+              <div className="divide-y divide-white/10">
+                {stocks.map((stock) => (
+                  <div key={`mobile-row-${stock.symbol}`} className="px-8 py-6 hover:bg-white/5 transition-all group relative">
+                    {isEditing && (
+                      <button
+                        onClick={() => removeStock(stock.symbol)}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-xs p-2"
+                      >
+                        ✕
+                      </button>
+                    )}
+
+                    <PriceDisplay symbol={stock.symbol} avgPrice={stock.avgPrice} quantity={stock.quantity}>
+                      <div className="grid grid-cols-3 items-center justify-center gap-4">
+                        {isEditing ? (
+                          <div className="relative w-full col-span-2">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-xs">$</span>
+                            <input
+                              type="number"
+                              value={stock.avgPrice || ''}
+                              onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
+                              className="w-full pl-7 pr-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-slate-100 font-bold col-span-2 text-center">${stock.avgPrice.toFixed(2)}</span>
+                        )}
+
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={stock.quantity || ''}
+                            onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
+                            className="w-full px-2 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-sm col-span-1"
+                          />
+                        ) : (
+                          <span className="text-slate-100 font-bold col-span-1 text-center">{stock.quantity}</span>
+                        )}
+                      </div>
+                    </PriceDisplay>
+                  </div>
+                ))}
+
+                {isEditing && (
+                  <div className="px-8 py-5 bg-white/5 border-t border-white/10">
+                    <div className="relative" ref={dropdownRef}>
+                      <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Ticker (e.g. IVV.AX)"
+                          value={newSymbol}
+                          onChange={(e) => handleSearchChange(e.target.value)}
+                          onFocus={() => setShowDropdown(true)}
+                          className="px-4 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={newQuantity}
+                            onChange={(e) => setNewQuantity(e.target.value)}
+                            className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Buy Price"
+                            value={newBuyPrice}
+                            onChange={(e) => setNewBuyPrice(e.target.value)}
+                            className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                          />
+                        </div>
+                        <button
+                          onClick={addOrMergeHolding}
+                          className="px-3 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      {showDropdown && suggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
+                          {suggestions.map((item) => (
+                            <button
+                              key={`mobile-suggest-${item.symbol}`}
+                              onClick={() => selectSuggestion(item)}
+                              className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
+                                <span className="text-[10px] text-blue-200/70 font-medium truncate max-w-[280px]">
+                                  {item.description}
+                                </span>
+                              </div>
+                              <span className="text-blue-300 font-semibold text-[11px]">Use</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-start gap-3">
+            <button
+              onClick={toggleEditMode}
+              className={`px-5 py-2.5 border rounded-xl text-[12px] font-semibold transition-all ${
+                isEditing
+                  ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600'
+                  : 'bg-white/10 border-white/15 text-blue-100 hover:bg-white/15'
+              }`}
+            >
+              {isEditing ? 'Cancel' : 'Edit Portfolio'}
+            </button>
+
+            {isEditing && (
+              <button
+                onClick={manualSave}
+                className="px-5 py-2.5 bg-green-500 text-white border border-green-500 rounded-xl text-[12px] font-semibold hover:bg-green-600 transition-all"
+              >
+                {saveStatus}
+              </button>
+            )}
+          </div>
+
+          {showAiHelper && aiHelperPanel}
+
+          {showChart && (
+            <div className="mt-2 relative">
+              <button
+                onClick={() => setShowChart(false)}
+                className="absolute top-2 left-3 text-xs text-blue-200/80 hover:text-blue-100 z-10"
+              >
+                Close
+              </button>
+              {chartLoading ? (
+                <div className="text-center py-10">Loading…</div>
+              ) : (
+                <PieChart data={chartData} />
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden lg:grid lg:grid-cols-[190px_minmax(0,1fr)_300px] items-stretch lg:items-start gap-6 pl-0 pr-0 md:pr-2 lg:pr-0">
           <aside className="w-full shrink-0">
             <div className="bg-white/5 rounded-2xl border border-white/10 shadow-sm p-4 flex flex-col gap-3 lg:sticky lg:top-6 backdrop-blur-md">
               <SignedOut>
@@ -553,66 +838,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {showAiHelper && (
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4">
-                <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">AI Helper</p>
-                <p className="mt-1 text-[10px] text-blue-200/70">
-                  By using AI Helper, you agree to our{' '}
-                  <Link href="/privacy" className="underline hover:text-blue-100 transition-colors">
-                    Privacy Policy
-                  </Link>{' '}
-                  and{' '}
-                  <Link href="/ai-disclaimer" className="underline hover:text-blue-100 transition-colors">
-                    AI Disclaimer
-                  </Link>
-                  .
-                </p>
-
-                <div className="mt-3 max-h-[260px] overflow-y-auto space-y-2 pr-1">
-                  {chatMessages.map((entry, index) => (
-                    <div
-                      key={`${entry.role}-${index}`}
-                      className={`rounded-lg px-3 py-2 text-[12px] leading-relaxed ${
-                        entry.role === 'assistant'
-                          ? 'bg-white/10 text-blue-100 border border-white/10'
-                          : 'bg-blue-600/80 text-white border border-blue-400/40'
-                      }`}
-                    >
-                      {entry.content}
-                    </div>
-                  ))}
-                  {chatLoading && (
-                    <div className="rounded-lg px-3 py-2 text-[12px] bg-white/10 text-blue-200 border border-white/10">
-                      Thinking…
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        sendChatMessage();
-                      }
-                    }}
-                    placeholder="Ask about your holdings"
-                    className="flex-1 px-3 py-2 bg-slate-800/80 text-slate-100 border border-white/10 rounded-lg text-[12px] font-medium focus:outline-none focus:border-blue-400"
-                  />
-                  <button
-                    onClick={sendChatMessage}
-                    disabled={chatLoading}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-[12px] font-semibold hover:bg-blue-700 transition-all disabled:opacity-60"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
-            )}
+            {showAiHelper && aiHelperPanel}
 
             {showChart && (
               <div className="mt-4 relative">
