@@ -26,7 +26,7 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
   if (loading && !data) {
     return (
       <div className="grid grid-cols-12 items-center w-full h-24 bg-gray-50/50 animate-pulse rounded-[2rem] px-10">
-        <div className="col-span-3 flex items-center gap-4">
+        <div className="col-span-2 flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gray-200" />
           <div className="h-4 w-20 bg-gray-200 rounded" />
         </div>
@@ -48,7 +48,7 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
   return (
     <div className="grid grid-cols-12 items-center w-full">
       {/* 1. ASSET SECTION */}
-      <div className="col-span-3 flex items-center gap-4 min-w-0">
+      <div className="col-span-2 flex items-center gap-4 min-w-0">
         <div className="w-12 h-12 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shrink-0 shadow-sm p-1.5 transition-transform hover:scale-105">
           {data?.logo ? (
             <img 
@@ -84,7 +84,7 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
       </div>
 
       {/* 4. DAY CHG */}
-      <div className="col-span-1 flex justify-end">
+      <div className="col-span-2 flex justify-end">
         <div className={`px-2 py-0.5 rounded-lg text-[11px] font-bold ${isDayPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
           {isDayPositive ? '▲' : '▼'}{Math.abs(data?.percentChange ?? 0).toFixed(2)}%
         </div>

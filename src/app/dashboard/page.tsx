@@ -16,6 +16,8 @@ export default function DashboardPage() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [saveStatus, setSaveStatus] = useState('Save Portfolio');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editBackup, setEditBackup] = useState<any[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // --- PERSISTENCE LOGIC ---
@@ -37,7 +39,22 @@ export default function DashboardPage() {
   const manualSave = () => {
     localStorage.setItem('my_portfolio', JSON.stringify(stocks));
     setSaveStatus('Saved To Browser');
+    setIsEditing(false);
+    setEditBackup([]);
     setTimeout(() => setSaveStatus('Save Portfolio'), 2000);
+  };
+
+  const toggleEditMode = () => {
+    if (isEditing) {
+      // Cancel - restore from backup
+      setStocks(editBackup);
+      setIsEditing(false);
+      setEditBackup([]);
+    } else {
+      // Enter edit mode - save backup
+      setEditBackup(JSON.parse(JSON.stringify(stocks)));
+      setIsEditing(true);
+    }
   };
 
   // --- ACTIONS & SEARCH ---
@@ -102,8 +119,24 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             {/* Action Buttons */}
             <button 
+              onClick={toggleEditMode}
+              className={`px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 ${
+                isEditing 
+                  ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600' 
+                  : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {isEditing ? 'Cancel' : 'Edit Portfolio'}
+            </button>
+
+            <button 
               onClick={manualSave}
-              className="px-5 py-3 bg-white border border-gray-200 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-500 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
+              disabled={!isEditing}
+              className={`px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 ${
+                isEditing
+                  ? 'bg-green-500 text-white border border-green-500 hover:bg-green-600'
+                  : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 opacity-50 cursor-not-allowed'
+              }`}
             >
               {saveStatus}
             </button>
@@ -160,47 +193,56 @@ export default function DashboardPage() {
         <div className="bg-white rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden">
           {/* Grid Headers */}
           <div className="grid grid-cols-12 px-10 pt-10 pb-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            <span className="col-span-3">Asset</span>
-            <span className="col-span-3 text-center">Entry Details</span>
+            <span className="col-span-2">Asset</span>
+            <span className="col-span-2 text-center">Avg Price</span>
+            <span className="col-span-1 text-center">Qty</span>
             <span className="col-span-2 text-right">Market Price</span>
-            <span className="col-span-1 text-right">24h</span>
-            <span className="col-span-1 text-right ml-4">Value</span>
+            <span className="col-span-2 text-right">24h</span>
+            <span className="col-span-1 text-right">Value</span>
             <span className="col-span-2 text-right">Profit/Loss</span>
           </div>
 
           <div className="divide-y divide-gray-50">
             {stocks.map((stock) => (
               <div key={stock.symbol} className="p-10 hover:bg-gray-50/50 transition-all group relative">
-                {/* Delete Button */}
-                <button 
-                  onClick={() => removeStock(stock.symbol)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-rose-300 hover:text-rose-500 transition-all text-xs p-2"
-                >
-                  ✕
-                </button>
 
                 <PriceDisplay 
                   symbol={stock.symbol} 
                   avgPrice={stock.avgPrice}
                   quantity={stock.quantity}
                 >
-                  <div className="flex items-center gap-3 justify-center">
-                    <div className="relative w-[130px]">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                  <div className="grid grid-cols-3 items-center justify-center gap-4">
+                    {/* avg price column */}
+                    {isEditing ? (
+                      <div className="relative w-full col-span-2">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
+                        <input 
+                          type="number"
+                          value={stock.avgPrice || ''}
+                          onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
+                          className="w-full pl-7 pr-3 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-gray-700 font-bold col-span-2 text-center">
+                        ${stock.avgPrice.toFixed(2)}
+                      </span>
+                    )}
+
+                    {/* quantity column */}
+                    {isEditing ? (
                       <input 
                         type="number"
-                        value={stock.avgPrice || ''}
-                        onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                        className="w-full pl-7 pr-3 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold focus:outline-none focus:bg-white transition-all text-sm"
+                        placeholder="Qty"
+                        value={stock.quantity || ''}
+                        onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
+                        className="w-full px-2 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold text-center focus:outline-none focus:bg-white transition-all text-sm col-span-1"
                       />
-                    </div>
-                    <input 
-                      type="number"
-                      placeholder="Qty"
-                      value={stock.quantity || ''}
-                      onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                      className="w-[60px] px-2 py-3 bg-gray-50 border-transparent border focus:border-blue-500 rounded-2xl font-bold text-center focus:outline-none focus:bg-white transition-all text-sm"
-                    />
+                    ) : (
+                      <span className="text-gray-700 font-bold col-span-1 text-center">
+                        {stock.quantity}
+                      </span>
+                    )}
                   </div>
                 </PriceDisplay>
               </div>

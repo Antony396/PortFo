@@ -1,17 +1,25 @@
 {
   "name": "portfo",
   "version": "1.0.0",
-  "description": "",
+  "description": "A professional stock portfolio tracker with real-time price updates and authentication",
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "portfolio",
+    "stocks",
+    "tracker",
+    "finnhub",
+    "nextjs",
+    "typescript"
+  ],
+  "author": "Antony",
+  "license": "MIT",
   "dependencies": {
     "@clerk/nextjs": "^6.39.0",
     "clsx": "^2.1.1",
