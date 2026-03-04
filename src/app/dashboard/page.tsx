@@ -584,7 +584,7 @@ export default function DashboardPage() {
                   </Link>
                   <Link
                     href="/analysis"
-                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 text-center"
+                    className="w-full px-4 py-2.5 bg-blue-600 border border-blue-500 rounded-xl text-[12px] font-semibold text-white text-center hover:bg-blue-700 transition-all"
                   >
                     Stock Analysis
                   </Link>
@@ -631,10 +631,9 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <p className="text-[10px] text-blue-200/70 uppercase tracking-[0.1em]">Swipe table left/right to view all columns</p>
-          <div className="overflow-x-auto overflow-y-visible relative z-30">
-            <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-[980px]">
-              <div className="grid grid-cols-12 px-8 pt-7 pb-4 text-[11px] font-semibold text-blue-200/80 uppercase tracking-[0.08em]">
+          <div className="overflow-visible relative z-30">
+            <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-full">
+              <div className="grid grid-cols-12 px-4 pt-4 pb-3 text-[9px] font-semibold text-blue-200/80 uppercase tracking-[0.06em]">
                 <span className="col-span-2">Asset</span>
                 <span className="col-span-2 text-center">Avg Buy Price</span>
                 <span className="col-span-1 text-center">Qty</span>
@@ -646,30 +645,30 @@ export default function DashboardPage() {
 
               <div className="divide-y divide-white/10">
                 {stocks.map((stock) => (
-                  <div key={`mobile-row-${stock.symbol}`} className="px-8 py-6 hover:bg-white/5 transition-all group relative">
+                  <div key={`mobile-row-${stock.symbol}`} className="px-4 py-4 hover:bg-white/5 transition-all group relative">
                     {isEditing && (
                       <button
                         onClick={() => removeStock(stock.symbol)}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-xs p-2"
+                        className="absolute left-1 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-[10px] p-1"
                       >
                         ✕
                       </button>
                     )}
 
-                    <PriceDisplay symbol={stock.symbol} avgPrice={stock.avgPrice} quantity={stock.quantity}>
-                      <div className="grid grid-cols-3 items-center justify-center gap-4">
+                    <PriceDisplay symbol={stock.symbol} avgPrice={stock.avgPrice} quantity={stock.quantity} compact>
+                      <div className="grid grid-cols-3 items-center justify-center gap-1">
                         {isEditing ? (
                           <div className="relative w-full col-span-2">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-xs">$</span>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-[10px]">$</span>
                             <input
                               type="number"
                               value={stock.avgPrice || ''}
                               onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                              className="w-full pl-7 pr-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
+                              className="w-full pl-5 pr-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
                             />
                           </div>
                         ) : (
-                          <span className="text-slate-100 font-bold col-span-2 text-center">${stock.avgPrice.toFixed(2)}</span>
+                          <span className="text-slate-100 font-bold col-span-2 text-center text-[11px]">${stock.avgPrice.toFixed(2)}</span>
                         )}
 
                         {isEditing ? (
@@ -678,59 +677,60 @@ export default function DashboardPage() {
                             placeholder="Qty"
                             value={stock.quantity || ''}
                             onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                            className="w-full px-2 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-sm col-span-1"
+                            className="w-full px-1 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-[11px] col-span-1"
                           />
                         ) : (
-                          <span className="text-slate-100 font-bold col-span-1 text-center">{stock.quantity}</span>
+                          <span className="text-slate-100 font-bold col-span-1 text-center text-[11px]">{stock.quantity}</span>
                         )}
                       </div>
                     </PriceDisplay>
                   </div>
                 ))}
-
-                {isEditing && (
-                  <div className="px-8 py-5 bg-white/5 border-t border-white/10">
-                    <div className="relative z-[90]" ref={mobileDropdownRef}>
-                      <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
-                      <div className="grid grid-cols-1 gap-2">
-                        <input
-                          type="text"
-                          placeholder="Ticker (e.g. IVV.AX)"
-                          value={newSymbol}
-                          onChange={(e) => handleSearchChange(e.target.value)}
-                          onFocus={() => setShowDropdown(true)}
-                          className="px-4 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="number"
-                            placeholder="Qty"
-                            value={newQuantity}
-                            onChange={(e) => setNewQuantity(e.target.value)}
-                            className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
-                          />
-                          <input
-                            type="number"
-                            placeholder="Buy Price"
-                            value={newBuyPrice}
-                            onChange={(e) => setNewBuyPrice(e.target.value)}
-                            className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
-                          />
-                        </div>
-                        <button
-                          onClick={addOrMergeHolding}
-                          className="px-3 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold"
-                        >
-                          Add
-                        </button>
-                      </div>
-
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
+
+          {isEditing && (
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="relative z-[90]" ref={mobileDropdownRef}>
+                <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
+                <div className="grid grid-cols-1 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ticker (e.g. IVV.AX)"
+                    value={newSymbol}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    onFocus={() => setShowDropdown(true)}
+                    className="px-4 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      placeholder="Qty"
+                      value={newQuantity}
+                      onChange={(e) => setNewQuantity(e.target.value)}
+                      className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Buy Price"
+                      value={newBuyPrice}
+                      onChange={(e) => setNewBuyPrice(e.target.value)}
+                      className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                    />
+                  </div>
+                  <button
+                    onClick={addOrMergeHolding}
+                    className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {addStatus && <p className="mt-2 text-[11px] font-semibold text-blue-100">{addStatus}</p>}
+              </div>
+            </div>
+          )}
 
           <div className="relative z-10 flex items-center justify-start gap-3">
             <button

@@ -65,6 +65,7 @@ export default function AnalysisPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const filingsTableScrollRef = useRef<HTMLDivElement>(null);
 
   const [filings, setFilings] = useState<FilingRecord[]>([]);
   const [isFilingsLoaded, setIsFilingsLoaded] = useState(false);
@@ -322,6 +323,14 @@ export default function AnalysisPage() {
     (a, b) => Date.parse(b.updatedAt || b.createdAt) - Date.parse(a.updatedAt || a.createdAt),
   );
 
+  const scrollFilingsTable = (direction: 'left' | 'right') => {
+    const container = filingsTableScrollRef.current;
+    if (!container) return;
+
+    const amount = direction === 'right' ? 220 : -220;
+    container.scrollBy({ left: amount, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-12 px-4 font-sans text-slate-100">
       <div className="max-w-[1300px] mx-auto">
@@ -348,7 +357,7 @@ export default function AnalysisPage() {
         )}
 
         <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6 items-start">
-          <div className="bg-white/5 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
+          <div className="relative z-30 xl:z-auto bg-white/5 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
             <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-3">Add Stock To Table</p>
 
             <div className="relative" ref={dropdownRef}>
@@ -402,10 +411,30 @@ export default function AnalysisPage() {
             )}
           </div>
 
-          <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md overflow-hidden">
+          <div className="relative z-10 bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md overflow-hidden">
             <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-4">Your Analysis Files</p>
 
-            <div className="overflow-x-auto">
+            <div className="mb-3 flex items-center justify-between gap-2 md:hidden">
+              <p className="text-[10px] text-blue-200/70 uppercase tracking-[0.1em]">Swipe to see all table columns</p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => scrollFilingsTable('left')}
+                  className="h-6 min-w-6 px-2 rounded-md border border-white/20 bg-white/10 text-[11px] font-semibold text-blue-100 hover:bg-white/15 transition-all"
+                  aria-label="Scroll filings table left"
+                >
+                  ←
+                </button>
+                <button
+                  onClick={() => scrollFilingsTable('right')}
+                  className="h-6 min-w-6 px-2 rounded-md border border-white/20 bg-white/10 text-[11px] font-semibold text-blue-100 hover:bg-white/15 transition-all"
+                  aria-label="Scroll filings table right"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+
+            <div ref={filingsTableScrollRef} className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-blue-200/80 text-[11px] uppercase tracking-[0.08em]">
@@ -413,7 +442,7 @@ export default function AnalysisPage() {
                     <th className="py-3 text-left font-semibold">Company</th>
                     <th className="py-3 text-left font-semibold">Created</th>
                     <th className="py-3 text-left font-semibold">Last Opened</th>
-                    <th className="py-3 text-left font-semibold">Actions</th>
+                    <th className="py-3 text-left font-semibold hidden md:table-cell">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -433,11 +462,27 @@ export default function AnalysisPage() {
                           >
                             {filing.symbol}
                           </button>
+
+                          <div className="mt-2 flex items-center gap-2 md:hidden">
+                            <button
+                              onClick={() => openFiling(filing.symbol)}
+                              className="px-3 py-1.5 rounded-lg border border-amber-300/30 bg-amber-500/10 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20 transition-all"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteSymbol(filing.symbol)}
+                              disabled={removingSymbol === filing.symbol}
+                              className="px-3 py-1.5 rounded-lg border border-rose-300/30 bg-rose-500/10 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {removingSymbol === filing.symbol ? 'Removing…' : 'Remove'}
+                            </button>
+                          </div>
                         </td>
                         <td className="py-4 text-blue-50">{filing.companyName}</td>
                         <td className="py-4 text-blue-100/85">{formatDate(filing.createdAt)}</td>
                         <td className="py-4 text-blue-100/85">{formatDate(filing.updatedAt)}</td>
-                        <td className="py-4">
+                        <td className="py-4 hidden md:table-cell">
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => openFiling(filing.symbol)}

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-export default function PriceDisplay({ symbol, avgPrice, quantity, children }: any) {
+export default function PriceDisplay({ symbol, avgPrice, quantity, children, compact = false }: any) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,10 +25,10 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
   // Show a skeleton while loading the very first time
   if (loading && !data) {
     return (
-      <div className="grid grid-cols-12 items-center w-full h-24 bg-white/5 animate-pulse rounded-[2rem] px-8">
-        <div className="col-span-2 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/10" />
-          <div className="h-4 w-20 bg-white/10 rounded" />
+      <div className={`grid grid-cols-12 items-center w-full bg-white/5 animate-pulse ${compact ? 'h-16 rounded-xl px-4' : 'h-24 rounded-[2rem] px-8'}`}>
+        <div className={`col-span-2 flex items-center ${compact ? 'gap-2' : 'gap-4'}`}>
+          <div className={`${compact ? 'w-8 h-8 rounded-lg' : 'w-12 h-12 rounded-2xl'} bg-white/10`} />
+          <div className={`h-4 ${compact ? 'w-10' : 'w-20'} bg-white/10 rounded`} />
         </div>
         <div className="col-span-3">{children}</div>
       </div>
@@ -48,8 +48,8 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
   return (
     <div className="grid grid-cols-12 items-center w-full">
       {/* 1. ASSET SECTION */}
-      <div className="col-span-2 flex items-center gap-4 min-w-0">
-        <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center shrink-0 shadow-sm p-1.5 transition-transform hover:scale-105">
+      <div className={`col-span-2 flex items-center min-w-0 ${compact ? 'gap-2' : 'gap-4'}`}>
+        <div className={`${compact ? 'w-8 h-8 rounded-lg p-1' : 'w-12 h-12 rounded-2xl p-1.5'} bg-white/10 border border-white/10 flex items-center justify-center shrink-0 shadow-sm transition-transform hover:scale-105`}>
           {data?.logo ? (
             <img 
               src={data.logo} 
@@ -57,14 +57,14 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
               className="w-full h-full object-contain rounded-xl overflow-hidden" 
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center font-bold text-[10px] bg-white/10 text-blue-200/80 rounded-xl">
+            <div className={`w-full h-full flex items-center justify-center font-bold ${compact ? 'text-[8px]' : 'text-[10px]'} bg-white/10 text-blue-200/80 rounded-xl`}>
               {symbol.substring(0,3)}
             </div>
           )}
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="font-extrabold text-slate-100 text-lg truncate leading-none">{symbol}</span>
-          <span className="text-[10px] font-bold text-blue-200/70 uppercase mt-1 truncate">
+          <span className={`font-extrabold text-slate-100 truncate leading-none ${compact ? 'text-[11px]' : 'text-lg'}`}>{symbol}</span>
+          <span className={`${compact ? 'hidden' : 'text-[10px] font-bold text-blue-200/70 uppercase mt-1 truncate'}`}>
             {data?.companyName || 'Unknown Corp'}
           </span>
         </div>
@@ -77,31 +77,31 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children }: a
 
       {/* 3. PRICE */}
       <div className="col-span-2 flex flex-col items-end tabular-nums">
-        <span className="font-bold text-slate-100 text-lg leading-none">
+        <span className={`font-bold text-slate-100 leading-none ${compact ? 'text-[11px]' : 'text-lg'}`}>
           ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
       </div>
 
       {/* 4. DAY CHG */}
       <div className="col-span-2 flex justify-center">
-        <div className={`px-2 py-0.5 rounded-lg text-[11px] font-bold ${isDayPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+        <div className={`${compact ? 'px-1 py-0.5 text-[9px] rounded-md' : 'px-2 py-0.5 rounded-lg text-[11px]'} font-bold ${isDayPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
           {isDayPositive ? '▲' : '▼'}{Math.abs(data?.percentChange ?? 0).toFixed(2)}%
         </div>
       </div>
 
       {/* 5. TOTAL VALUE */}
       <div className="col-span-1 flex flex-col items-end tabular-nums">
-        <span className="font-bold text-slate-100 text-lg leading-none">
+        <span className={`font-bold text-slate-100 leading-none ${compact ? 'text-[11px]' : 'text-lg'}`}>
           ${currentTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
       </div>
 
       {/* 6. PROFIT/LOSS */}
       <div className="col-span-2 flex flex-col items-end tabular-nums">
-        <span className={`font-bold text-lg leading-none ${isGain ? 'text-emerald-500' : 'text-rose-500'}`}>
+        <span className={`font-bold leading-none ${compact ? 'text-[11px]' : 'text-lg'} ${isGain ? 'text-emerald-500' : 'text-rose-500'}`}>
           {isGain ? '+' : '-'}${Math.abs(totalGainedDollars).toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </span>
-        <span className={`mt-1 text-[10px] font-black uppercase ${isGain ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+        <span className={`${compact ? 'mt-0.5 text-[8px]' : 'mt-1 text-[10px]'} font-black uppercase ${isGain ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
           {totalReturnPercent.toFixed(2)}%
         </span>
       </div>
