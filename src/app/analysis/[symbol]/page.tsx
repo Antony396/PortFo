@@ -605,12 +605,12 @@ export default function AnalysisSymbolPage() {
     loadStockData(analysisSymbol);
   }, [analysisSymbol]);
 
-  const dcfValue = useMemo(() => {
+  function calculateDcfForGrowthRate(growthRate: string): number | null {
     const parsedFcf = parseNumericInput(fcf);
     const parsedShares = parseNumericInput(shares);
     const parsedCash = cash.trim() ? parseNumericInput(cash) : 0;
     const parsedDebt = debt.trim() ? parseNumericInput(debt) : 0;
-    const parsedGrowth = parseNumericInput(activeScenarioData.growthRate);
+    const parsedGrowth = parseNumericInput(growthRate);
     const parsedDiscount = parseNumericInput(discountRate);
     const parsedTerminal = parseNumericInput(terminalGrowth);
     const parsedYears = parseNumericInput(years);
@@ -636,7 +636,15 @@ export default function AnalysisSymbolPage() {
     } catch {
       return null;
     }
+  }
+
+  const dcfValue = useMemo(() => {
+    return calculateDcfForGrowthRate(activeScenarioData.growthRate);
   }, [fcf, shares, cash, debt, activeScenarioData.growthRate, discountRate, terminalGrowth, years]);
+
+  const baseScenarioDcfValue = useMemo(() => {
+    return calculateDcfForGrowthRate(scenarioAnalyses.base.growthRate);
+  }, [fcf, shares, cash, debt, scenarioAnalyses.base.growthRate, discountRate, terminalGrowth, years]);
 
   const valuationGap = useMemo(() => {
     if (dcfValue === null || currentPrice === null || currentPrice <= 0) return null;
@@ -651,35 +659,21 @@ export default function AnalysisSymbolPage() {
     };
   }, [dcfValue, currentPrice]);
 
+  const baseScenarioValuationGap = useMemo(() => {
+    if (baseScenarioDcfValue === null || currentPrice === null || currentPrice <= 0) return null;
+
+    const difference = baseScenarioDcfValue - currentPrice;
+    const differencePct = (difference / currentPrice) * 100;
+
+    return {
+      difference,
+      differencePct,
+      direction: difference >= 0 ? 'above' : 'below',
+    };
+  }, [baseScenarioDcfValue, currentPrice]);
+
   const calculateScenarioDcf = (growthRate: string): number | null => {
-    const parsedFcf = parseNumericInput(fcf);
-    const parsedShares = parseNumericInput(shares);
-    const parsedCash = cash.trim() ? parseNumericInput(cash) : 0;
-    const parsedDebt = debt.trim() ? parseNumericInput(debt) : 0;
-    const parsedGrowth = parseNumericInput(growthRate);
-    const parsedDiscount = parseNumericInput(discountRate);
-    const parsedTerminal = parseNumericInput(terminalGrowth);
-    const parsedYears = parseNumericInput(years);
-
-    if ([parsedFcf, parsedShares, parsedCash, parsedDebt, parsedGrowth, parsedDiscount, parsedTerminal, parsedYears].some((value) => Number.isNaN(value))) {
-      return null;
-    }
-    if (!(parsedFcf > 0) || !(parsedShares > 0)) return null;
-
-    try {
-      return calculateDCF({
-        fcf: parsedFcf,
-        growthRate: parsedGrowth,
-        discountRate: parsedDiscount,
-        terminalGrowth: parsedTerminal,
-        years: parsedYears,
-        sharesOutstanding: parsedShares,
-        cashEquivalent: parsedCash,
-        totalDebt: parsedDebt,
-      }).intrinsicValuePerShare;
-    } catch {
-      return null;
-    }
+    return calculateDcfForGrowthRate(growthRate);
   };
 
   const updateScenario = (scenario: ScenarioKey, updates: Partial<ScenarioAnalysis>) => {
@@ -1008,7 +1002,7 @@ export default function AnalysisSymbolPage() {
                   href={`/analysis/${encodeURIComponent(analysisSymbol)}?view=1`}
                   className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
                 >
-                  View
+                  View Report
                 </Link>
               </>
             )}
@@ -1062,10 +1056,10 @@ export default function AnalysisSymbolPage() {
               isActionLoading={isLoadingData}
             />
             <MetricCard
-              label="DCF Value / Share"
-              value={dcfValue !== null ? `$${formatCurrency(dcfValue)}` : '—'}
-              badgeText={valuationGap ? formatPercent(valuationGap.differencePct) : undefined}
-              badgeClassName={valuationGap ? (valuationGap.differencePct >= 0 ? 'text-emerald-300' : 'text-rose-300') : undefined}
+              label="DCF Value / Share [Base Case]"
+              value={baseScenarioDcfValue !== null ? `$${formatCurrency(baseScenarioDcfValue)}` : '—'}
+              badgeText={baseScenarioValuationGap ? formatPercent(baseScenarioValuationGap.differencePct) : undefined}
+              badgeClassName={baseScenarioValuationGap ? (baseScenarioValuationGap.differencePct >= 0 ? 'text-emerald-300' : 'text-rose-300') : undefined}
               actionLabel={isViewMode ? undefined : showDcfInputs ? 'Hide DCF inputs' : 'Show DCF inputs'}
               onAction={isViewMode ? undefined : toggleDcfInputs}
             />
@@ -1147,7 +1141,7 @@ export default function AnalysisSymbolPage() {
                       : 'border-emerald-300/30'
                 }`}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-[180px_180px_1fr] gap-3 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3 items-end">
                   <div>
                     <label
                       className={`block text-[10px] font-semibold uppercase tracking-[0.1em] mb-1 ${
@@ -1165,36 +1159,6 @@ export default function AnalysisSymbolPage() {
                       step="any"
                       value={activeScenarioData.growthRate}
                       onChange={(event) => updateScenario(activeScenario, { growthRate: event.target.value })}
-                      disabled={isViewMode}
-                      className={`w-full px-3 py-2 bg-slate-800/80 text-slate-100 border rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-xs ${
-                        activeScenario === 'conservative'
-                          ? 'border-rose-300/25 focus:border-rose-300'
-                          : activeScenario === 'base'
-                            ? 'border-amber-300/25 focus:border-amber-300'
-                            : 'border-emerald-300/25 focus:border-emerald-300'
-                      }`}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      className={`block text-[10px] font-semibold uppercase tracking-[0.1em] mb-1 ${
-                        activeScenario === 'conservative'
-                          ? 'text-rose-200'
-                          : activeScenario === 'base'
-                            ? 'text-amber-200'
-                            : 'text-emerald-200'
-                      }`}
-                    >
-                      Likelihood (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      max="100"
-                      value={activeScenarioData.likelihood}
-                      onChange={(event) => updateScenario(activeScenario, { likelihood: event.target.value })}
                       disabled={isViewMode}
                       className={`w-full px-3 py-2 bg-slate-800/80 text-slate-100 border rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-xs ${
                         activeScenario === 'conservative'
@@ -1225,7 +1189,7 @@ export default function AnalysisSymbolPage() {
 
             <div className="mt-4">
               <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
-                Summary Of All Cases
+                Analysis
               </label>
               <textarea
                 value={casesSummary}
@@ -1246,10 +1210,13 @@ export default function AnalysisSymbolPage() {
           <div className="p-6">
             <div className="mb-6">
               <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">Write-Up</label>
+              <p className="text-[11px] text-blue-200/80 mb-2">
+                Include your estimated likelihood for this scenario directly in the write-up (for example: “Likelihood: 35%”).
+              </p>
               <textarea
                 value={activeScenarioData.analysis}
                 onChange={(event) => updateScenario(activeScenario, { analysis: event.target.value })}
-                placeholder={`Write your ${activeScenarioLabel.toLowerCase()} write-up here…`}
+                placeholder={`Write your ${activeScenarioLabel.toLowerCase()} write-up here, including your estimated likelihood (e.g. Likelihood: 35%)…`}
                 readOnly={isViewMode}
                 className={`w-full min-h-[380px] px-4 py-3 bg-slate-800/70 text-slate-100 border border-white/10 rounded-xl text-sm font-medium focus:outline-none ${
                   isViewMode ? 'cursor-default' : 'focus:border-blue-400'

@@ -816,7 +816,7 @@ export default function AnalysisPage() {
                                   : 'border-blue-300/30 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
                               }`}
                             >
-                              View
+                              View Report
                             </button>
                             <button
                               onClick={() => openFiling(filing.symbol)}
@@ -861,7 +861,7 @@ export default function AnalysisPage() {
                                   : 'border-blue-300/30 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
                               }`}
                             >
-                              View
+                              View Report
                             </button>
                             <button
                               onClick={() => openFiling(filing.symbol)}
