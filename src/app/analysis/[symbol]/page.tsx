@@ -42,6 +42,8 @@ type FilingRecord = {
   updatedAt: string;
 };
 
+type StorageMode = 'unknown' | 'database' | 'local';
+
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
 const ANALYSIS_DRAFT_KEY_PREFIX = 'portfo_stock_analysis_draft_v1_';
 
@@ -168,6 +170,7 @@ export default function AnalysisSymbolPage() {
   const [savedDcfAt, setSavedDcfAt] = useState('');
   const [saveDcfStatus, setSaveDcfStatus] = useState('Save DCF Price');
   const [saveStatus, setSaveStatus] = useState('Save Analysis File (Login to Save)');
+  const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
 
   const activeScenarioData = scenarioAnalyses[activeScenario];
@@ -182,6 +185,7 @@ export default function AnalysisSymbolPage() {
 
   useEffect(() => {
     setIsDraftHydrated(false);
+    setStorageMode('unknown');
     setFcf('');
     setShares('');
     setCash('');
@@ -251,6 +255,7 @@ export default function AnalysisSymbolPage() {
 
     const restoreDraft = async () => {
       if (!isSignedIn) {
+        setStorageMode('local');
         restoreFromLocal();
         setIsDraftHydrated(true);
         return;
@@ -262,11 +267,13 @@ export default function AnalysisSymbolPage() {
         });
 
         if (!response.ok) {
+          setStorageMode('local');
           restoreFromLocal();
           return;
         }
 
         const data = await response.json();
+        setStorageMode(data?.storage === 'database' ? 'database' : 'local');
         const filing = data?.filing as { companyName?: string; draft?: unknown } | null;
 
         if (!filing) {
@@ -286,6 +293,7 @@ export default function AnalysisSymbolPage() {
         restoreFromLocal();
       } catch (error) {
         console.error('Failed to restore account analysis draft', error);
+        setStorageMode('local');
         restoreFromLocal();
       } finally {
         setIsDraftHydrated(true);
@@ -459,9 +467,16 @@ export default function AnalysisSymbolPage() {
         }),
       });
 
+      if (response.ok) {
+        setStorageMode('database');
+      } else {
+        setStorageMode('local');
+      }
+
       return response.ok;
     } catch (error) {
       console.error('Failed to save analysis draft to account', error);
+      setStorageMode('local');
       return false;
     }
   };
@@ -497,7 +512,7 @@ export default function AnalysisSymbolPage() {
       isSignedIn
         ? accountSaved
           ? 'Saved To Account'
-          : 'Saved Local Only'
+          : 'Saved Local Only (Account Sync Unavailable)'
         : 'Saved To Browser',
     );
     setTimeout(() => setSaveStatus(defaultSaveLabel), 1500);
@@ -565,6 +580,12 @@ export default function AnalysisSymbolPage() {
             </Link>
           </div>
         </div>
+
+        {isSignedIn && storageMode === 'local' && (
+          <div className="mb-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-100">
+            Account sync is unavailable on this deployment right now. This analysis is saving to this browser only.
+          </div>
+        )}
 
         <div className="mb-6 bg-white/5 rounded-2xl shadow-sm border border-white/10 p-4 backdrop-blur-md">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">

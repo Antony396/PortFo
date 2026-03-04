@@ -17,6 +17,8 @@ type FilingRecord = {
   updatedAt: string;
 };
 
+type StorageMode = 'unknown' | 'database' | 'local';
+
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
 const ANALYSIS_DRAFT_KEY_PREFIX = 'portfo_stock_analysis_draft_v1_';
 
@@ -69,6 +71,7 @@ export default function AnalysisPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [confirmDeleteSymbol, setConfirmDeleteSymbol] = useState<string | null>(null);
+  const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [status, setStatus] = useState('');
 
   useEffect(() => {
@@ -85,19 +88,24 @@ export default function AnalysisPage() {
   useEffect(() => {
     if (!isUserLoaded) return;
 
+    setStorageMode('unknown');
+
     const loadLocalFilings = () => {
       try {
         const rawFilings = localStorage.getItem(FILINGS_KEY);
         if (!rawFilings) {
           setFilings([]);
+          setStorageMode('local');
           return;
         }
 
         const parsed = JSON.parse(rawFilings) as FilingRecord[];
         setFilings(normalizeFilings(parsed));
+        setStorageMode('local');
       } catch (error) {
         console.error('Failed to load stock analysis filings', error);
         setFilings([]);
+        setStorageMode('local');
       }
     };
 
@@ -122,6 +130,7 @@ export default function AnalysisPage() {
 
         if (data?.storage === 'database') {
           setFilings(dbFilings);
+          setStorageMode('database');
         } else {
           loadLocalFilings();
         }
@@ -154,9 +163,16 @@ export default function AnalysisPage() {
         }),
       });
 
+      if (response.ok) {
+        setStorageMode('database');
+      } else {
+        setStorageMode('local');
+      }
+
       return response.ok;
     } catch (error) {
       console.error('Failed to save filing to account', error);
+      setStorageMode('local');
       return false;
     }
   };
@@ -324,6 +340,12 @@ export default function AnalysisPage() {
             Back to Dashboard
           </Link>
         </div>
+
+        {isSignedIn && storageMode === 'local' && (
+          <div className="mb-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-100">
+            Account sync is unavailable on this deployment right now. Filings are saving to this browser only.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6 items-start">
           <div className="bg-white/5 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">

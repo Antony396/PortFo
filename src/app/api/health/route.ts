@@ -12,22 +12,24 @@ async function probeSupabaseConnection() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  const notConfigured = { ok: false, reason: 'not-configured' as const };
+
   if (!isPresent(supabaseUrl) || !isPresent(supabaseServiceRoleKey)) {
-    return { ok: false, reason: 'not-configured' as const };
+    return {
+      portfolio: notConfigured,
+      analysis: notConfigured,
+    };
   }
 
-  try {
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/portfolios?select=user_id&limit=1`,
-      {
-        method: 'GET',
-        headers: {
-          apikey: supabaseServiceRoleKey as string,
-          Authorization: `Bearer ${supabaseServiceRoleKey}`,
-        },
-        cache: 'no-store',
+  const probeTable = async (path: string) => {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      method: 'GET',
+      headers: {
+        apikey: supabaseServiceRoleKey as string,
+        Authorization: `Bearer ${supabaseServiceRoleKey}`,
       },
-    );
+      cache: 'no-store',
+    });
 
     if (!response.ok) {
       return {
@@ -38,8 +40,18 @@ async function probeSupabaseConnection() {
     }
 
     return { ok: true, reason: 'connected' as const };
+  };
+
+  try {
+    const portfolio = await probeTable('portfolios?select=user_id&limit=1');
+    const analysis = await probeTable('analysis_filings?select=symbol&limit=1');
+    return { portfolio, analysis };
   } catch {
-    return { ok: false, reason: 'network-error' as const };
+    const networkError = { ok: false, reason: 'network-error' as const };
+    return {
+      portfolio: networkError,
+      analysis: networkError,
+    };
   }
 }
 
@@ -68,9 +80,14 @@ export async function GET() {
         missing: missingBaseVariables,
       },
       accountSave: {
-        ready: accountSaveReady,
+        ready: accountSaveReady && accountSaveProbe.portfolio.ok,
         missing: missingAccountSaveVariables,
-        connection: accountSaveProbe,
+        connection: accountSaveProbe.portfolio,
+      },
+      analysisSave: {
+        ready: accountSaveReady && accountSaveProbe.analysis.ok,
+        missing: missingAccountSaveVariables,
+        connection: accountSaveProbe.analysis,
       },
     },
   };
