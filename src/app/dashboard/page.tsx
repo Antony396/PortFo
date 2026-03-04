@@ -797,7 +797,11 @@ export default function DashboardPage() {
         {/* HEADER SECTION */}
         <div className="px-2 md:px-10 lg:px-0 lg:-ml-3 mb-4 md:mb-4 lg:mb-3">
           <div className="lg:w-[220px] lg:mx-0 lg:flex lg:flex-col lg:items-center lg:justify-center">
-            <PortfoLogo className="h-16 w-auto lg:h-14" />
+            <PortfoLogo
+              className="lg:justify-center"
+              iconClassName="h-10 w-10 lg:h-9 lg:w-9 shrink-0"
+              textClassName="text-[42px] lg:text-[34px] font-black tracking-tight leading-none text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-slate-200 to-emerald-300"
+            />
             <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.18em] mt-1 lg:text-center">Live Portfolio</p>
           </div>
         </div>

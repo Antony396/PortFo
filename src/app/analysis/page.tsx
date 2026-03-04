@@ -662,7 +662,11 @@ export default function AnalysisPage() {
       <div className="max-w-[1300px] mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <PortfoLogo className="h-14 w-auto mb-2" />
+            <PortfoLogo
+              className="mb-2"
+              iconClassName="h-10 w-10 shrink-0"
+              textClassName="text-[40px] font-black tracking-tight leading-none text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-slate-200 to-emerald-300"
+            />
             <h1 className="text-3xl font-black tracking-tight">Stock Analysis Filings</h1>
             <p className="text-xs font-semibold text-blue-200 uppercase tracking-[0.18em] mt-2">
               Personal Filing Table
