@@ -10,6 +10,12 @@ type PriceResponse = {
   currentPrice?: number;
   companyName?: string;
   logo?: string;
+  fundamentals?: FundamentalsSnapshot;
+};
+
+type FundamentalsSnapshot = {
+  currentPe: number | null;
+  dividendYield: number | null;
 };
 
 type ScenarioKey = 'conservative' | 'base' | 'aggressive';
@@ -150,6 +156,27 @@ function formatGrowthRatePercent(value: string): string {
   return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`;
 }
 
+function formatMetricValue(value: number | null | undefined, maximumFractionDigits = 2): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  });
+}
+
+function formatMetricPercent(
+  value: number | null | undefined,
+  maximumFractionDigits = 2,
+  minimumFractionDigits = 0,
+): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return `${value.toLocaleString(undefined, {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  })}%`;
+}
+
 function sanitizeScenarioAnalysis(value: unknown, fallback: ScenarioAnalysis): ScenarioAnalysis {
   if (!value || typeof value !== 'object') return fallback;
 
@@ -244,6 +271,7 @@ export default function AnalysisSymbolPage() {
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [companyName, setCompanyName] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
+  const [fundamentals, setFundamentals] = useState<FundamentalsSnapshot | null>(null);
 
   const [fcf, setFcf] = useState('');
   const [shares, setShares] = useState('');
@@ -582,7 +610,7 @@ export default function AnalysisSymbolPage() {
     setIsLoadingData(true);
 
     try {
-      const priceRes = await fetch(`/api/price/${encodeURIComponent(targetSymbol)}`);
+      const priceRes = await fetch(`/api/price/${encodeURIComponent(targetSymbol)}?includeFundamentals=1`);
 
       const priceData = (await priceRes.json()) as PriceResponse;
       if (!priceRes.ok) {
@@ -592,6 +620,11 @@ export default function AnalysisSymbolPage() {
       setCurrentPrice(Number(priceData.currentPrice || 0));
       setCompanyName(priceData.companyName || targetSymbol);
       setCompanyLogo(typeof priceData.logo === 'string' ? priceData.logo : '');
+      if (priceData.fundamentals && typeof priceData.fundamentals === 'object') {
+        setFundamentals(priceData.fundamentals);
+      } else {
+        setFundamentals(null);
+      }
     } catch (error) {
       console.error('Failed to load stock analysis data', error);
       setLoadError('Failed to load stock data. Please try again.');
@@ -671,6 +704,16 @@ export default function AnalysisSymbolPage() {
       direction: difference >= 0 ? 'above' : 'below',
     };
   }, [baseScenarioDcfValue, currentPrice]);
+
+  const fundamentalHighlights = useMemo(() => ([
+    { label: 'Current P/E', value: formatMetricValue(fundamentals?.currentPe, 2) },
+    { label: 'Dividend Yield (% Price)', value: formatMetricPercent(fundamentals?.dividendYield, 1, 1) },
+  ]), [fundamentals]);
+
+  const hasAnyFundamentalData = useMemo(
+    () => fundamentalHighlights.some((item) => item.value !== '—'),
+    [fundamentalHighlights],
+  );
 
   const calculateScenarioDcf = (growthRate: string): number | null => {
     return calculateDcfForGrowthRate(growthRate);
@@ -906,6 +949,20 @@ export default function AnalysisSymbolPage() {
               </div>
 
               <div className="mt-6 rounded-xl border border-white/10 bg-slate-800/35 px-4 py-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Company Fundamentals</p>
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-2 gap-2.5">
+                  {fundamentalHighlights.map((item) => (
+                    <FundamentalPill key={`published-${item.label}`} label={item.label} value={item.value} />
+                  ))}
+                </div>
+                {!hasAnyFundamentalData && (
+                  <p className="mt-2 text-[11px] text-blue-100/70">
+                    Fundamentals are unavailable for this symbol right now.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-6 rounded-xl border border-white/10 bg-slate-800/35 px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Scenario Metrics</p>
                 <p className="mt-2 text-[12px] text-blue-100/80">
                   Projected growth for each of the cases (short-term rate over {dcfHorizonLabel} in the DCF model).
@@ -1063,6 +1120,20 @@ export default function AnalysisSymbolPage() {
               actionLabel={isViewMode ? undefined : showDcfInputs ? 'Hide DCF inputs' : 'Show DCF inputs'}
               onAction={isViewMode ? undefined : toggleDcfInputs}
             />
+          </div>
+
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4">
+            <p className="text-[10px] font-semibold text-blue-200 uppercase tracking-[0.1em]">Company Fundamentals</p>
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-2 gap-2.5">
+              {fundamentalHighlights.map((item) => (
+                <FundamentalPill key={`draft-${item.label}`} label={item.label} value={item.value} />
+              ))}
+            </div>
+            {!hasAnyFundamentalData && (
+              <p className="mt-2 text-[11px] text-blue-100/70">
+                Fundamentals are unavailable for this symbol right now.
+              </p>
+            )}
           </div>
 
           {savedDcfAt && (
@@ -1295,6 +1366,21 @@ function MetricCard({
           <span className={`text-xs font-semibold ${badgeClassName || 'text-blue-100'}`}>{badgeText}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+function FundamentalPill({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-slate-900/45 px-3 py-2">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-blue-200/85">{label}</p>
+      <p className="mt-1 text-[12px] font-semibold text-blue-50">{value}</p>
     </div>
   );
 }
