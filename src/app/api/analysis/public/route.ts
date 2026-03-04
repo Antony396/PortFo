@@ -78,10 +78,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [rows, votes] = await Promise.all([
-      getPublicAnalysisReviewsBySymbol(symbol, 30),
-      getPublicAnalysisReviewVotesBySymbol(symbol),
-    ]);
+    const rows = await getPublicAnalysisReviewsBySymbol(symbol, 30);
+
+    let votes: Array<{ review_user_id: string; symbol: string; voter_user_id: string; vote: number }> = [];
+    try {
+      votes = (await getPublicAnalysisReviewVotesBySymbol(symbol)) || [];
+    } catch (voteLoadError) {
+      console.error('Public analysis votes GET warning:', voteLoadError);
+    }
 
     const voteSummaryByReview = buildVoteSummaryByReview(votes || [], userId || null);
     const reviews = (rows || []).map((row) => {
@@ -108,6 +112,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ reviews, storage: 'database' });
   } catch (error) {
     console.error('Public analysis reviews GET error:', error);
-    return NextResponse.json({ error: 'Failed to load public analysis reviews' }, { status: 500 });
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: `Failed to load public analysis reviews: ${details}` }, { status: 500 });
   }
 }

@@ -69,13 +69,17 @@ export async function GET(
   }
 
   try {
-    const [row, votes] = await Promise.all([
-      getPublicAnalysisReviewByUserIdAndSymbol(authorId, symbol),
-      getPublicAnalysisReviewVotesByReview(authorId, symbol),
-    ]);
+    const row = await getPublicAnalysisReviewByUserIdAndSymbol(authorId, symbol);
 
     if (!row) {
       return NextResponse.json({ error: 'Public review not found' }, { status: 404 });
+    }
+
+    let votes: Array<{ voter_user_id: string; vote: number }> = [];
+    try {
+      votes = (await getPublicAnalysisReviewVotesByReview(authorId, symbol)) || [];
+    } catch (voteLoadError) {
+      console.error('Public analysis review votes GET warning:', voteLoadError);
     }
 
     const voteSummary = summarizeVotes(votes || [], userId || null);
@@ -95,6 +99,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('Public analysis review GET error:', error);
-    return NextResponse.json({ error: 'Failed to load public analysis review' }, { status: 500 });
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: `Failed to load public analysis review: ${details}` }, { status: 500 });
   }
 }

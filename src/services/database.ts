@@ -73,6 +73,21 @@ async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3) {
 	throw new Error('Failed to complete Supabase request after retries');
 }
 
+async function buildSupabaseErrorMessage(response: Response, fallbackMessage: string) {
+	let details = '';
+	try {
+		details = (await response.text()).trim();
+	} catch {
+		details = '';
+	}
+
+	if (!details) {
+		return `${fallbackMessage} (status ${response.status})`;
+	}
+
+	return `${fallbackMessage} (status ${response.status}): ${details}`;
+}
+
 export function isDatabaseConfigured() {
 	return Boolean(supabaseUrl && supabaseServiceRoleKey);
 }
@@ -319,7 +334,7 @@ export async function upsertPublicAnalysisReviewByUserId(
 	});
 
 	if (!response.ok) {
-		throw new Error('Failed to save public analysis review to database');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to save public analysis review to database'));
 	}
 
 	const rows = await response.json();
@@ -349,7 +364,7 @@ export async function getPublicAnalysisReviewsBySymbol(symbol: string, limit = 2
 	});
 
 	if (!response.ok) {
-		throw new Error('Failed to fetch public analysis reviews from database');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to fetch public analysis reviews from database'));
 	}
 
 	const rows = await response.json();
@@ -374,7 +389,7 @@ export async function getPublicAnalysisReviewByUserIdAndSymbol(reviewUserId: str
 	});
 
 	if (!response.ok) {
-		throw new Error('Failed to fetch public analysis review from database');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to fetch public analysis review from database'));
 	}
 
 	const rows = await response.json();
@@ -403,7 +418,7 @@ export async function deletePublicAnalysisReviewByUserIdAndSymbol(reviewUserId: 
 	);
 
 	if (!response.ok) {
-		throw new Error('Failed to delete public analysis review from database');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to delete public analysis review from database'));
 	}
 
 	return true;
@@ -423,7 +438,7 @@ export async function getPublicAnalysisReviewVotesBySymbol(symbol: string): Prom
 	});
 
 	if (!response.ok) {
-		throw new Error('Failed to fetch public review votes from database');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to fetch public review votes from database'));
 	}
 
 	const rows = await response.json();
@@ -448,7 +463,7 @@ export async function getPublicAnalysisReviewVotesByReview(reviewUserId: string,
 	});
 
 	if (!response.ok) {
-		throw new Error('Failed to fetch public review vote summary from database');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to fetch public review vote summary from database'));
 	}
 
 	const rows = await response.json();
@@ -489,7 +504,7 @@ export async function upsertPublicAnalysisReviewVote(params: {
 	});
 
 	if (!response.ok) {
-		throw new Error('Failed to upsert public analysis review vote');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to upsert public analysis review vote'));
 	}
 
 	const rows = await response.json();
@@ -522,7 +537,7 @@ export async function deletePublicAnalysisReviewVote(params: {
 	);
 
 	if (!response.ok) {
-		throw new Error('Failed to delete public analysis review vote');
+		throw new Error(await buildSupabaseErrorMessage(response, 'Failed to delete public analysis review vote'));
 	}
 
 	return true;

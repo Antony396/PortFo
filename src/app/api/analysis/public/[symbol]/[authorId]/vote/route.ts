@@ -121,6 +121,7 @@ export async function PUT(
     return NextResponse.json({ ok: true, votes: voteSummary });
   } catch (error) {
     console.error('Public analysis vote PUT error:', error);
-    return NextResponse.json({ error: 'Failed to save vote' }, { status: 500 });
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: `Failed to save vote: ${details}` }, { status: 500 });
   }
 }
