@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
+import PortfoLogo from '../../components/branding/PortfoLogo';
 
 type Suggestion = {
   symbol: string;
@@ -657,10 +658,11 @@ export default function AnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-12 px-4 font-sans text-slate-100">
+    <div className="min-h-screen bg-market-mesh py-12 px-4 font-sans text-slate-100">
       <div className="max-w-[1300px] mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
+            <PortfoLogo className="h-14 w-auto mb-2" />
             <h1 className="text-3xl font-black tracking-tight">Stock Analysis Filings</h1>
             <p className="text-xs font-semibold text-blue-200 uppercase tracking-[0.18em] mt-2">
               Personal Filing Table

@@ -826,7 +826,7 @@ export default function AnalysisSymbolPage() {
 
   if (!analysisSymbol) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-12 px-4 font-sans text-slate-100">
+      <div className="min-h-screen bg-market-mesh py-12 px-4 font-sans text-slate-100">
         <div className="max-w-[900px] mx-auto bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-8 backdrop-blur-md">
           <h1 className="text-2xl font-black tracking-tight">Invalid Analysis File</h1>
           <p className="text-sm text-blue-100/90 mt-3">The selected stock symbol is missing or invalid.</p>
@@ -870,7 +870,7 @@ export default function AnalysisSymbolPage() {
     });
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-8 px-4 font-sans text-slate-100">
+      <div className="min-h-screen bg-market-mesh py-8 px-4 font-sans text-slate-100">
         <div className="max-w-[1100px] mx-auto">
           <div className="mb-5 flex items-center justify-between gap-3">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200/85">Published Analysis Report</p>
@@ -971,7 +971,7 @@ export default function AnalysisSymbolPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-12 px-4 font-sans text-slate-100">
+    <div className="min-h-screen bg-market-mesh py-12 px-4 font-sans text-slate-100">
       <div className="max-w-[1300px] mx-auto">
         <div className="flex items-center justify-between gap-3 mb-8">
           <div>

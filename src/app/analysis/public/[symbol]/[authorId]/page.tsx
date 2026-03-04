@@ -281,7 +281,7 @@ export default function PublicAnalysisReviewPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-12 px-4 font-sans text-slate-100">
+      <div className="min-h-screen bg-market-mesh py-12 px-4 font-sans text-slate-100">
         <div className="max-w-[900px] mx-auto bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-8 backdrop-blur-md">
           <p className="text-sm font-semibold text-blue-100/90">Loading public review…</p>
         </div>
@@ -291,7 +291,7 @@ export default function PublicAnalysisReviewPage() {
 
   if (error || !review || !publishedFile) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-12 px-4 font-sans text-slate-100">
+      <div className="min-h-screen bg-market-mesh py-12 px-4 font-sans text-slate-100">
         <div className="max-w-[900px] mx-auto bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-8 backdrop-blur-md">
           <h1 className="text-2xl font-black tracking-tight">Public Review Unavailable</h1>
           <p className="text-sm text-blue-100/90 mt-3">{error || 'This review could not be loaded.'}</p>
@@ -309,7 +309,7 @@ export default function PublicAnalysisReviewPage() {
   const mostLikelyScenario = orderedScenarioOptions[0];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-8 px-4 font-sans text-slate-100">
+    <div className="min-h-screen bg-market-mesh py-8 px-4 font-sans text-slate-100">
       <div className="max-w-[1100px] mx-auto">
         <div className="mb-5 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200/85">Community Review</p>
