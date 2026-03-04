@@ -1032,6 +1032,19 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+
+              <div className="mt-4 rounded-xl border border-blue-300/30 bg-blue-500/10 p-4">
+                <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">Try Our Stock Analysis Write-Up Feature</p>
+                <p className="mt-2 text-[11px] text-blue-100/85 leading-relaxed">
+                  Build detailed bullish, base, and bearish write-ups for each stock in your filing table.
+                </p>
+                <Link
+                  href="/analysis"
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-blue-300/35 bg-blue-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-blue-700"
+                >
+                  Open Stock Analysis
+                </Link>
+              </div>
             </div>
           </aside>
         </div>
