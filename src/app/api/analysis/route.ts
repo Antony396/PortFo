@@ -12,17 +12,31 @@ type AnalysisPayload = {
   draft?: unknown;
 };
 
+function resolvePublishedAt(draft: unknown): string {
+  if (!draft || typeof draft !== 'object') return '';
+
+  const candidate = (draft as { publishedFile?: { publishedAt?: unknown } }).publishedFile;
+  if (!candidate || typeof candidate !== 'object') return '';
+
+  return typeof candidate.publishedAt === 'string' ? candidate.publishedAt : '';
+}
+
 function mapFiling(row: {
   symbol: string;
   company_name: string;
   created_at: string;
   updated_at: string;
+  draft?: unknown;
 }) {
+  const publishedAt = resolvePublishedAt(row.draft);
+
   return {
     symbol: row.symbol,
     companyName: row.company_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    publishedAt,
+    hasPublished: Boolean(publishedAt),
   };
 }
 

@@ -15,6 +15,8 @@ type FilingRecord = {
   companyName: string;
   createdAt: string;
   updatedAt: string;
+  publishedAt: string;
+  hasPublished: boolean;
 };
 
 type StorageMode = 'unknown' | 'database' | 'local';
@@ -35,6 +37,7 @@ function normalizeFilings(items: unknown): FilingRecord[] {
       const companyName = typeof entry.companyName === 'string' ? entry.companyName : '';
       const createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : '';
       const updatedAt = typeof entry.updatedAt === 'string' ? entry.updatedAt : '';
+      const publishedAt = typeof entry.publishedAt === 'string' ? entry.publishedAt : '';
 
       if (!symbol) return null;
 
@@ -44,6 +47,8 @@ function normalizeFilings(items: unknown): FilingRecord[] {
         companyName: companyName || symbol,
         createdAt: createdAt || now,
         updatedAt: updatedAt || createdAt || now,
+        publishedAt,
+        hasPublished: Boolean(publishedAt),
       };
     })
     .filter((item): item is FilingRecord => Boolean(item));
@@ -354,7 +359,14 @@ export default function AnalysisPage() {
     }
 
     const now = new Date().toISOString();
-    const record: FilingRecord = { symbol: ticker, companyName, createdAt: now, updatedAt: now };
+    const record: FilingRecord = {
+      symbol: ticker,
+      companyName,
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: '',
+      hasPublished: false,
+    };
     setFilings((prev) => [record, ...prev]);
     setSymbolInput('');
     setSuggestions([]);
@@ -375,7 +387,7 @@ export default function AnalysisPage() {
     setIsAdding(false);
   };
 
-  const openFiling = async (symbol: string) => {
+  const openFiling = async (symbol: string, viewOnly = false) => {
     const now = new Date().toISOString();
     let updatedRecord: FilingRecord | null = null;
 
@@ -399,7 +411,11 @@ export default function AnalysisPage() {
       await saveFilingToAccount(updatedRecord);
     }
 
-    router.push(`/analysis/${encodeURIComponent(symbol)}`);
+    router.push(`/analysis/${encodeURIComponent(symbol)}${viewOnly ? '?view=1' : ''}`);
+  };
+
+  const viewPublishedFiling = (symbol: string) => {
+    void openFiling(symbol, true);
   };
 
   const removeFiling = async (symbol: string) => {
@@ -593,7 +609,27 @@ export default function AnalysisPage() {
                             {filing.symbol}
                           </button>
 
+                          {filing.publishedAt ? (
+                            <p className="mt-1 text-[10px] font-semibold text-emerald-200/90 uppercase tracking-[0.08em]">
+                              Published
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-[10px] font-semibold text-blue-200/65 uppercase tracking-[0.08em]">
+                              Draft
+                            </p>
+                          )}
+
                           <div className="mt-2 flex items-center gap-2 md:hidden">
+                            <button
+                              onClick={() => viewPublishedFiling(filing.symbol)}
+                              className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all ${
+                                filing.publishedAt
+                                  ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                                  : 'border-blue-300/30 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
+                              }`}
+                            >
+                              View
+                            </button>
                             <button
                               onClick={() => openFiling(filing.symbol)}
                               className="px-3 py-1.5 rounded-lg border border-amber-300/30 bg-amber-500/10 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20 transition-all"
@@ -614,6 +650,16 @@ export default function AnalysisPage() {
                         <td className="py-4 text-blue-100/85">{formatDate(filing.updatedAt)}</td>
                         <td className="py-4 hidden md:table-cell">
                           <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => viewPublishedFiling(filing.symbol)}
+                              className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all ${
+                                filing.publishedAt
+                                  ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                                  : 'border-blue-300/30 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
+                              }`}
+                            >
+                              View
+                            </button>
                             <button
                               onClick={() => openFiling(filing.symbol)}
                               className="px-3 py-1.5 rounded-lg border border-amber-300/30 bg-amber-500/10 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20 transition-all"

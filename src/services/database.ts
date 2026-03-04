@@ -142,7 +142,7 @@ export async function getAnalysisFilingsByUserId(userId: string): Promise<Analys
 		return null;
 	}
 
-	const query = `${supabaseUrl}/rest/v1/analysis_filings?user_id=eq.${encodeURIComponent(userId)}&select=symbol,company_name,created_at,updated_at&order=updated_at.desc`;
+	const query = `${supabaseUrl}/rest/v1/analysis_filings?user_id=eq.${encodeURIComponent(userId)}&select=symbol,company_name,created_at,updated_at,draft&order=updated_at.desc`;
 	const response = await fetchWithRetry(query, {
 		method: 'GET',
 		headers: getHeaders(),

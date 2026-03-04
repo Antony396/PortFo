@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { calculateDCF } from '../../../lib/dcf';
 
@@ -17,10 +17,12 @@ type ScenarioKey = 'conservative' | 'base' | 'aggressive';
 type ScenarioAnalysis = {
   growthRate: string;
   analysis: string;
+  likelihood: string;
 };
 
 type Draft = {
   scenarioAnalyses: Record<ScenarioKey, ScenarioAnalysis>;
+  casesSummary?: string;
   activeScenario: ScenarioKey;
   fcf: string;
   sharesOutstanding: string;
@@ -31,8 +33,20 @@ type Draft = {
   years: string;
   savedDcfPrice: number | null;
   savedDcfAt: string;
+  publishedFile?: PublishedAnalysisFile;
   thesis?: string;
   growthRate?: string;
+};
+
+type PublishedAnalysisFile = {
+  symbol: string;
+  companyName: string;
+  publishedAt: string;
+  scenarioAnalyses: Record<ScenarioKey, ScenarioAnalysis>;
+  casesSummary: string;
+  activeScenario: ScenarioKey;
+  savedDcfPrice: number | null;
+  savedDcfAt: string;
 };
 
 type DraftRecoverySnapshot = {
@@ -46,6 +60,8 @@ type FilingRecord = {
   companyName: string;
   createdAt: string;
   updatedAt: string;
+  publishedAt?: string;
+  hasPublished?: boolean;
 };
 
 type StorageMode = 'unknown' | 'database' | 'local';
@@ -63,9 +79,9 @@ const defaultAssumptions = {
 const PROJECTED_GROWTH_SPREAD = 0.2;
 
 const defaultScenarioAnalyses: Record<ScenarioKey, ScenarioAnalysis> = {
-  conservative: { growthRate: '0.04', analysis: '' },
-  base: { growthRate: '0.08', analysis: '' },
-  aggressive: { growthRate: '0.12', analysis: '' },
+  conservative: { growthRate: '0.04', analysis: '', likelihood: '30' },
+  base: { growthRate: '0.08', analysis: '', likelihood: '40' },
+  aggressive: { growthRate: '0.12', analysis: '', likelihood: '30' },
 };
 
 const scenarioOptions: Array<{ key: ScenarioKey; label: string }> = [
@@ -112,21 +128,73 @@ function parseNumericInput(value: string): number {
   return Number(normalized);
 }
 
+function parseLikelihoodPercent(value: string): number {
+  const parsed = parseNumericInput(value);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.max(0, Math.min(100, parsed));
+}
+
+function formatLikelihood(value: string): string {
+  const normalized = parseLikelihoodPercent(value);
+  const rounded = Math.round(normalized * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`;
+}
+
 function sanitizeScenarioAnalysis(value: unknown, fallback: ScenarioAnalysis): ScenarioAnalysis {
   if (!value || typeof value !== 'object') return fallback;
 
   const raw = value as Partial<ScenarioAnalysis>;
   const growthRate = typeof raw.growthRate === 'string' ? raw.growthRate : fallback.growthRate;
   const analysis = typeof raw.analysis === 'string' ? raw.analysis : fallback.analysis;
+  const likelihood = typeof raw.likelihood === 'string' ? raw.likelihood : fallback.likelihood;
 
-  return { growthRate, analysis };
+  return { growthRate, analysis, likelihood };
 }
 
 function isScenarioKey(value: string): value is ScenarioKey {
   return value === 'conservative' || value === 'base' || value === 'aggressive';
 }
 
-function updateLocalFilingsRecord(symbol: string, companyName: string) {
+function sanitizePublishedFile(value: unknown): PublishedAnalysisFile | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const raw = value as Partial<PublishedAnalysisFile>;
+  const symbol = typeof raw.symbol === 'string' ? raw.symbol.trim().toUpperCase() : '';
+  if (!symbol) return null;
+
+  const companyName = typeof raw.companyName === 'string' && raw.companyName.trim()
+    ? raw.companyName.trim()
+    : symbol;
+  const publishedAt = typeof raw.publishedAt === 'string' ? raw.publishedAt : '';
+  const casesSummary = typeof raw.casesSummary === 'string' ? raw.casesSummary : '';
+  const activeScenario = typeof raw.activeScenario === 'string' && isScenarioKey(raw.activeScenario)
+    ? raw.activeScenario
+    : 'base';
+
+  const scenarioAnalyses = {
+    conservative: sanitizeScenarioAnalysis(raw.scenarioAnalyses?.conservative, defaultScenarioAnalyses.conservative),
+    base: sanitizeScenarioAnalysis(raw.scenarioAnalyses?.base, defaultScenarioAnalyses.base),
+    aggressive: sanitizeScenarioAnalysis(raw.scenarioAnalyses?.aggressive, defaultScenarioAnalyses.aggressive),
+  };
+
+  const savedDcfPrice = typeof raw.savedDcfPrice === 'number' && Number.isFinite(raw.savedDcfPrice)
+    ? raw.savedDcfPrice
+    : null;
+  const savedDcfAt = typeof raw.savedDcfAt === 'string' ? raw.savedDcfAt : '';
+
+  return {
+    symbol,
+    companyName,
+    publishedAt,
+    scenarioAnalyses,
+    casesSummary,
+    activeScenario,
+    savedDcfPrice,
+    savedDcfAt,
+  };
+}
+
+function updateLocalFilingsRecord(symbol: string, companyName: string, publishedAt?: string) {
   if (!symbol) return;
 
   try {
@@ -136,11 +204,14 @@ function updateLocalFilingsRecord(symbol: string, companyName: string) {
     const now = new Date().toISOString();
 
     const existing = normalized.find((item) => item.symbol === symbol);
+    const normalizedPublishedAt = typeof publishedAt === 'string' ? publishedAt : '';
     const next: FilingRecord = {
       symbol,
       companyName: companyName || existing?.companyName || symbol,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
+      publishedAt: normalizedPublishedAt || existing?.publishedAt || '',
+      hasPublished: Boolean(normalizedPublishedAt || existing?.publishedAt),
     };
 
     const withoutSymbol = normalized.filter((item) => item.symbol !== symbol);
@@ -153,7 +224,9 @@ function updateLocalFilingsRecord(symbol: string, companyName: string) {
 export default function AnalysisSymbolPage() {
   const { user, isSignedIn, isLoaded: isUserLoaded } = useUser();
   const params = useParams<{ symbol: string }>();
+  const searchParams = useSearchParams();
   const analysisSymbol = decodeURIComponent(params.symbol || '').trim().toUpperCase();
+  const isViewMode = searchParams.get('view') === '1';
   const previousAuthStateRef = useRef<boolean | null>(null);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -169,6 +242,7 @@ export default function AnalysisSymbolPage() {
 
   const [activeScenario, setActiveScenario] = useState<ScenarioKey>('base');
   const [scenarioAnalyses, setScenarioAnalyses] = useState<Record<ScenarioKey, ScenarioAnalysis>>(defaultScenarioAnalyses);
+  const [casesSummary, setCasesSummary] = useState('');
   const [discountRate, setDiscountRate] = useState(defaultAssumptions.discountRate);
   const [terminalGrowth, setTerminalGrowth] = useState(defaultAssumptions.terminalGrowth);
   const [years, setYears] = useState(defaultAssumptions.years);
@@ -178,12 +252,15 @@ export default function AnalysisSymbolPage() {
   const [savedDcfAt, setSavedDcfAt] = useState('');
   const [saveDcfStatus, setSaveDcfStatus] = useState('Save DCF Price');
   const [saveStatus, setSaveStatus] = useState('Save Analysis File (Login to Save)');
+  const [publishStatus, setPublishStatus] = useState('Publish Clean File');
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+  const [publishedFile, setPublishedFile] = useState<PublishedAnalysisFile | null>(null);
 
   const activeScenarioData = scenarioAnalyses[activeScenario];
   const activeScenarioLabel = scenarioOptions.find((option) => option.key === activeScenario)?.label || 'Scenario';
   const defaultSaveLabel = isSignedIn ? 'Save Analysis File' : 'Save Analysis File (Login to Save)';
+  const defaultPublishLabel = isSignedIn ? 'Publish Clean File' : 'Publish Clean File (Login to Save)';
 
   const draftKey = useMemo(() => `${ANALYSIS_DRAFT_KEY_PREFIX}${analysisSymbol}`, [analysisSymbol]);
 
@@ -222,6 +299,22 @@ export default function AnalysisSymbolPage() {
     }
   };
 
+  const createDraftPayload = (publishedOverride?: PublishedAnalysisFile | null): Draft => ({
+    scenarioAnalyses,
+    casesSummary,
+    activeScenario,
+    fcf,
+    sharesOutstanding: shares,
+    cashEquivalent: cash,
+    totalDebt: debt,
+    discountRate,
+    terminalGrowth,
+    years,
+    savedDcfPrice,
+    savedDcfAt,
+    publishedFile: publishedOverride ?? publishedFile ?? undefined,
+  });
+
   const clearLocalAnalysisData = () => {
     try {
       const rawFilings = localStorage.getItem(FILINGS_KEY);
@@ -255,6 +348,10 @@ export default function AnalysisSymbolPage() {
   }, [defaultSaveLabel]);
 
   useEffect(() => {
+    setPublishStatus(defaultPublishLabel);
+  }, [defaultPublishLabel]);
+
+  useEffect(() => {
     if (!isUserLoaded) return;
 
     const wasSignedIn = previousAuthStateRef.current;
@@ -269,12 +366,14 @@ export default function AnalysisSymbolPage() {
   useEffect(() => {
     setIsDraftHydrated(false);
     setStorageMode('unknown');
+    setPublishedFile(null);
     setFcf('');
     setShares('');
     setCash('');
     setDebt('');
     setActiveScenario('base');
     setScenarioAnalyses(defaultScenarioAnalyses);
+    setCasesSummary('');
     setShowDcfInputs(false);
     setSavedDcfPrice(null);
     setSavedDcfAt('');
@@ -289,6 +388,24 @@ export default function AnalysisSymbolPage() {
     if (!analysisSymbol || !isUserLoaded) return;
 
     const applyDraft = (parsed: Draft) => {
+      const parsedPublishedFile = sanitizePublishedFile(parsed.publishedFile);
+      setPublishedFile(parsedPublishedFile);
+
+      const restoredSummary = typeof parsed.casesSummary === 'string'
+        ? parsed.casesSummary
+        : parsedPublishedFile?.casesSummary || '';
+      setCasesSummary(restoredSummary);
+
+      if (isViewMode && parsedPublishedFile) {
+        setScenarioAnalyses(parsedPublishedFile.scenarioAnalyses);
+        setActiveScenario(parsedPublishedFile.activeScenario);
+        setSavedDcfPrice(parsedPublishedFile.savedDcfPrice);
+        setSavedDcfAt(parsedPublishedFile.savedDcfAt);
+        setCasesSummary(parsedPublishedFile.casesSummary || restoredSummary);
+        setCompanyName(parsedPublishedFile.companyName || analysisSymbol);
+        return;
+      }
+
       let nextScenarios = defaultScenarioAnalyses;
       if (parsed.scenarioAnalyses) {
         nextScenarios = {
@@ -302,6 +419,7 @@ export default function AnalysisSymbolPage() {
           base: {
             growthRate: typeof parsed.growthRate === 'string' ? parsed.growthRate : defaultScenarioAnalyses.base.growthRate,
             analysis: typeof parsed.thesis === 'string' ? parsed.thesis : defaultScenarioAnalyses.base.analysis,
+            likelihood: defaultScenarioAnalyses.base.likelihood,
           },
         };
       }
@@ -421,31 +539,19 @@ export default function AnalysisSymbolPage() {
     };
 
     restoreDraft();
-  }, [analysisSymbol, draftKey, isSignedIn, isUserLoaded, user?.id]);
+  }, [analysisSymbol, draftKey, isSignedIn, isUserLoaded, user?.id, isViewMode]);
 
   useEffect(() => {
-    if (!analysisSymbol || !isDraftHydrated) return;
+    if (!analysisSymbol || !isDraftHydrated || isViewMode) return;
 
-    const draft: Draft = {
-      scenarioAnalyses,
-      activeScenario,
-      fcf,
-      sharesOutstanding: shares,
-      cashEquivalent: cash,
-      totalDebt: debt,
-      discountRate,
-      terminalGrowth,
-      years,
-      savedDcfPrice,
-      savedDcfAt,
-    };
+    const draft = createDraftPayload();
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
 
     if (isSignedIn && user?.id) {
       saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
     }
-  }, [analysisSymbol, draftKey, isDraftHydrated, scenarioAnalyses, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, isSignedIn, user?.id, companyName]);
+  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName]);
 
   const loadStockData = async (targetSymbol: string) => {
     if (!targetSymbol) {
@@ -606,26 +712,14 @@ export default function AnalysisSymbolPage() {
   };
 
   const saveDraft = async () => {
-    if (!analysisSymbol) return;
+    if (!analysisSymbol || isViewMode) return;
 
     setSaveStatus('Saving...');
 
-    const draft: Draft = {
-      scenarioAnalyses,
-      activeScenario,
-      fcf,
-      sharesOutstanding: shares,
-      cashEquivalent: cash,
-      totalDebt: debt,
-      discountRate,
-      terminalGrowth,
-      years,
-      savedDcfPrice,
-      savedDcfAt,
-    };
+    const draft = createDraftPayload();
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
-    updateLocalFilingsRecord(analysisSymbol, companyName || analysisSymbol);
+    updateLocalFilingsRecord(analysisSymbol, companyName || analysisSymbol, publishedFile?.publishedAt);
     if (isSignedIn && user?.id) {
       saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
     }
@@ -643,6 +737,49 @@ export default function AnalysisSymbolPage() {
         : 'Saved To Browser',
     );
     setTimeout(() => setSaveStatus(defaultSaveLabel), 1500);
+  };
+
+  const publishCleanFile = async () => {
+    if (!analysisSymbol || isViewMode) return;
+
+    setPublishStatus('Publishing...');
+
+    const publishedAt = new Date().toISOString();
+    const nextPublishedFile: PublishedAnalysisFile = {
+      symbol: analysisSymbol,
+      companyName: companyName || analysisSymbol,
+      publishedAt,
+      scenarioAnalyses,
+      casesSummary,
+      activeScenario,
+      savedDcfPrice,
+      savedDcfAt,
+    };
+
+    setPublishedFile(nextPublishedFile);
+
+    const draft = createDraftPayload(nextPublishedFile);
+    localStorage.setItem(draftKey, JSON.stringify(draft));
+    updateLocalFilingsRecord(analysisSymbol, companyName || analysisSymbol, publishedAt);
+
+    if (isSignedIn && user?.id) {
+      saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
+    }
+
+    let accountSaved = false;
+    if (isSignedIn) {
+      accountSaved = await saveDraftToAccount(draft);
+    }
+
+    setPublishStatus(
+      isSignedIn
+        ? accountSaved
+          ? 'Published To Account'
+          : 'Published Local Only (Account Sync Unavailable)'
+        : 'Published To Browser',
+    );
+
+    setTimeout(() => setPublishStatus(defaultPublishLabel), 1800);
   };
 
   const saveDcfPriceToFile = () => {
@@ -681,6 +818,104 @@ export default function AnalysisSymbolPage() {
     );
   }
 
+  if (isViewMode && publishedFile) {
+    const orderedScenarioOptions = [...scenarioOptions].sort((a, b) => {
+      const likelihoodA = parseLikelihoodPercent(publishedFile.scenarioAnalyses[a.key]?.likelihood || '0');
+      const likelihoodB = parseLikelihoodPercent(publishedFile.scenarioAnalyses[b.key]?.likelihood || '0');
+
+      if (likelihoodA === likelihoodB) {
+        return scenarioOptions.findIndex((option) => option.key === a.key)
+          - scenarioOptions.findIndex((option) => option.key === b.key);
+      }
+
+      return likelihoodB - likelihoodA;
+    });
+
+    const mostLikelyScenario = orderedScenarioOptions[0];
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-8 px-4 font-sans text-slate-100">
+        <div className="max-w-[1100px] mx-auto">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200/85">Published Analysis Report</p>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/analysis/${encodeURIComponent(analysisSymbol)}`}
+                className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+              >
+                Edit File
+              </Link>
+              <Link
+                href="/analysis"
+                className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+              >
+                Back to Filings
+              </Link>
+            </div>
+          </div>
+
+          <article className="mx-auto max-w-[900px] bg-slate-900/70 border border-white/10 rounded-2xl shadow-sm backdrop-blur-md px-10 py-12">
+            <header className="border-b border-white/10 pb-7 mb-8">
+              <h1 className="text-4xl font-bold tracking-tight text-blue-50">{publishedFile.symbol}</h1>
+              <p className="mt-2 text-lg text-blue-100/90">{publishedFile.companyName || analysisSymbol}</p>
+
+              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 text-[13px] text-blue-100/80">
+                <p>
+                  <span className="font-semibold text-blue-200">Published:</span>{' '}
+                  {formatDateTime(publishedFile.publishedAt)}
+                </p>
+                <p>
+                  <span className="font-semibold text-blue-200">Primary Scenario:</span>{' '}
+                  {scenarioOptions.find((option) => option.key === publishedFile.activeScenario)?.label || 'Base'}
+                </p>
+                <p>
+                  <span className="font-semibold text-blue-200">Most Likely:</span>{' '}
+                  {mostLikelyScenario?.label || 'Base'}
+                </p>
+                <p>
+                  <span className="font-semibold text-blue-200">Saved DCF:</span>{' '}
+                  {publishedFile.savedDcfPrice !== null ? `$${formatCurrency(publishedFile.savedDcfPrice)}` : '—'}
+                </p>
+              </div>
+            </header>
+
+            <section>
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Summary Of All Cases</h2>
+              <p className="mt-3 whitespace-pre-wrap leading-7 text-[15px] text-blue-50/95">
+                {publishedFile.casesSummary?.trim() || 'No all-cases summary was included in this published file.'}
+              </p>
+            </section>
+
+            <section className="mt-10 space-y-8">
+              {orderedScenarioOptions.map((option) => {
+                const scenario = publishedFile.scenarioAnalyses[option.key];
+
+                return (
+                  <div key={option.key} className="border-t border-white/10 pt-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <h3 className="text-xl font-semibold text-blue-50">{option.label} Scenario</h3>
+                      <p className="text-sm text-blue-100/85">
+                        Likelihood:{' '}
+                        <span className="font-semibold text-blue-50">{formatLikelihood(scenario?.likelihood || '0')}</span>
+                        {' • '}Projected Growth:{' '}
+                        <span className="font-semibold text-blue-50">{scenario?.growthRate || '—'}</span>
+                      </p>
+                    </div>
+
+                    <p className="mt-3 whitespace-pre-wrap leading-7 text-[15px] text-blue-50/95">
+                      {scenario?.analysis?.trim() || 'No write-up was provided for this scenario.'}
+                    </p>
+                  </div>
+                );
+              })}
+            </section>
+          </article>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-12 px-4 font-sans text-slate-100">
       <div className="max-w-[1300px] mx-auto">
@@ -688,17 +923,39 @@ export default function AnalysisSymbolPage() {
           <div>
             <h1 className="text-3xl font-black tracking-tight">Analysis File: {analysisSymbol}</h1>
             <p className="text-xs font-semibold text-blue-200 uppercase tracking-[0.18em] mt-2">
-              Scenario Growth Analysis
+              {isViewMode ? 'Published File View' : 'Scenario Growth Analysis'}
             </p>
+            {publishedFile?.publishedAt && (
+              <p className="text-[11px] font-semibold text-emerald-200/90 mt-2">
+                Published {formatDateTime(publishedFile.publishedAt)}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={saveDraft}
-              className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
-            >
-              {saveStatus}
-            </button>
+            {isViewMode ? (
+              <Link
+                href={`/analysis/${encodeURIComponent(analysisSymbol)}`}
+                className="px-4 py-2.5 bg-amber-500/15 border border-amber-300/35 rounded-xl text-[12px] font-semibold text-amber-100 hover:bg-amber-500/25 transition-all"
+              >
+                Edit File
+              </Link>
+            ) : (
+              <>
+                <button
+                  onClick={publishCleanFile}
+                  className="px-4 py-2.5 bg-emerald-500/15 border border-emerald-300/35 rounded-xl text-[12px] font-semibold text-emerald-100 hover:bg-emerald-500/25 transition-all"
+                >
+                  {publishStatus}
+                </button>
+                <button
+                  onClick={saveDraft}
+                  className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+                >
+                  {saveStatus}
+                </button>
+              </>
+            )}
             <Link
               href="/analysis"
               className="px-5 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all shadow-sm active:scale-95"
@@ -711,6 +968,12 @@ export default function AnalysisSymbolPage() {
         {isSignedIn && storageMode === 'local' && (
           <div className="mb-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-100">
             Account sync is unavailable on this deployment right now. This analysis is saving to this browser only.
+          </div>
+        )}
+
+        {isViewMode && !publishedFile && (
+          <div className="mb-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-100">
+            No published clean file exists yet for this stock. Open Edit File, then publish when ready.
           </div>
         )}
 
@@ -747,8 +1010,8 @@ export default function AnalysisSymbolPage() {
               value={dcfValue !== null ? `$${formatCurrency(dcfValue)}` : '—'}
               badgeText={valuationGap ? formatPercent(valuationGap.differencePct) : undefined}
               badgeClassName={valuationGap ? (valuationGap.differencePct >= 0 ? 'text-emerald-300' : 'text-rose-300') : undefined}
-              actionLabel={showDcfInputs ? 'Hide DCF inputs' : 'Show DCF inputs'}
-              onAction={toggleDcfInputs}
+              actionLabel={isViewMode ? undefined : showDcfInputs ? 'Hide DCF inputs' : 'Show DCF inputs'}
+              onAction={isViewMode ? undefined : toggleDcfInputs}
             />
           </div>
 
@@ -765,7 +1028,7 @@ export default function AnalysisSymbolPage() {
           </div>
         )}
 
-        {showDcfInputs && (
+        {showDcfInputs && !isViewMode && (
           <div className="mb-6 bg-white/5 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
             <p className="text-xs text-blue-100/80 mb-2">Enter your own assumptions and financial inputs, then save a DCF price to this analysis file.</p>
             <p className="text-xs text-blue-200/85 mb-3">
@@ -828,7 +1091,7 @@ export default function AnalysisSymbolPage() {
                       : 'border-emerald-300/30'
                 }`}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-[180px_180px_1fr] gap-3 items-end">
                   <div>
                     <label
                       className={`block text-[10px] font-semibold uppercase tracking-[0.1em] mb-1 ${
@@ -846,6 +1109,37 @@ export default function AnalysisSymbolPage() {
                       step="any"
                       value={activeScenarioData.growthRate}
                       onChange={(event) => updateScenario(activeScenario, { growthRate: event.target.value })}
+                      disabled={isViewMode}
+                      className={`w-full px-3 py-2 bg-slate-800/80 text-slate-100 border rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-xs ${
+                        activeScenario === 'conservative'
+                          ? 'border-rose-300/25 focus:border-rose-300'
+                          : activeScenario === 'base'
+                            ? 'border-amber-300/25 focus:border-amber-300'
+                            : 'border-emerald-300/25 focus:border-emerald-300'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className={`block text-[10px] font-semibold uppercase tracking-[0.1em] mb-1 ${
+                        activeScenario === 'conservative'
+                          ? 'text-rose-200'
+                          : activeScenario === 'base'
+                            ? 'text-amber-200'
+                            : 'text-emerald-200'
+                      }`}
+                    >
+                      Likelihood (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      max="100"
+                      value={activeScenarioData.likelihood}
+                      onChange={(event) => updateScenario(activeScenario, { likelihood: event.target.value })}
+                      disabled={isViewMode}
                       className={`w-full px-3 py-2 bg-slate-800/80 text-slate-100 border rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-xs ${
                         activeScenario === 'conservative'
                           ? 'border-rose-300/25 focus:border-rose-300'
@@ -873,6 +1167,21 @@ export default function AnalysisSymbolPage() {
               </div>
             </div>
 
+            <div className="mt-4">
+              <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
+                Summary Of All Cases
+              </label>
+              <textarea
+                value={casesSummary}
+                onChange={(event) => setCasesSummary(event.target.value)}
+                placeholder="Write a concise summary that compares the bearish, base, and bullish outcomes..."
+                readOnly={isViewMode}
+                className={`w-full min-h-[120px] px-4 py-3 bg-slate-800/70 text-slate-100 border border-white/10 rounded-xl text-sm font-medium focus:outline-none ${
+                  isViewMode ? 'cursor-default' : 'focus:border-blue-400'
+                }`}
+              />
+            </div>
+
             <div className="mt-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-blue-50">{activeScenarioLabel} Write-Up</h2>
             </div>
@@ -885,7 +1194,10 @@ export default function AnalysisSymbolPage() {
                 value={activeScenarioData.analysis}
                 onChange={(event) => updateScenario(activeScenario, { analysis: event.target.value })}
                 placeholder={`Write your ${activeScenarioLabel.toLowerCase()} write-up here…`}
-                className="w-full min-h-[380px] px-4 py-3 bg-slate-800/70 text-slate-100 border border-white/10 rounded-xl text-sm font-medium focus:outline-none focus:border-blue-400"
+                readOnly={isViewMode}
+                className={`w-full min-h-[380px] px-4 py-3 bg-slate-800/70 text-slate-100 border border-white/10 rounded-xl text-sm font-medium focus:outline-none ${
+                  isViewMode ? 'cursor-default' : 'focus:border-blue-400'
+                }`}
               />
             </div>
           </div>

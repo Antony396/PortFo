@@ -7,6 +7,7 @@ A modern, professional stock portfolio tracking application built with Next.js 1
 **Real-time Stock Prices** - Fetches live stock quotes from Finnhub API
 **Secure Authentication** - User authentication powered by Clerk
 **Portfolio Management** - Add, remove, and track your stock holdings
+**Analysis Publish Mode** - Publish clean analysis files and open them in view-only mode
 **Account Cloud Save** - Signed-in users can load/save portfolios to Supabase
 **Comprehensive Analytics** - View gains/losses, percentages, and portfolio value
 **Responsive Design** - Mobile-first UI built with Tailwind CSS
@@ -137,7 +138,7 @@ Returns one filing row and its saved analysis draft.
 
 `PUT /api/analysis/[symbol]`
 
-Saves a symbol's analysis draft to the signed-in user's account.
+Saves a symbol's analysis draft (including optional published clean snapshot) to the signed-in user's account.
 
 `DELETE /api/analysis/[symbol]`
 
