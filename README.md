@@ -7,7 +7,7 @@ A modern, professional stock portfolio tracking application built with Next.js 1
 **Real-time Stock Prices** - Fetches live stock quotes from Finnhub API
 **Secure Authentication** - User authentication powered by Clerk
 **Portfolio Management** - Add, remove, and track your stock holdings
-**Analysis Publish Mode** - Publish clean analysis files and open them in view-only mode
+**Analysis Save + View Mode** - Save once to store your draft and refresh the published view copy
 **Account Cloud Save** - Signed-in users can load/save portfolios to Supabase
 **Comprehensive Analytics** - View gains/losses, percentages, and portfolio value
 **Responsive Design** - Mobile-first UI built with Tailwind CSS

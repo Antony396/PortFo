@@ -609,11 +609,7 @@ export default function AnalysisPage() {
                             {filing.symbol}
                           </button>
 
-                          {filing.publishedAt ? (
-                            <p className="mt-1 text-[10px] font-semibold text-emerald-200/90 uppercase tracking-[0.08em]">
-                              Published
-                            </p>
-                          ) : (
+                          {!filing.publishedAt && (
                             <p className="mt-1 text-[10px] font-semibold text-blue-200/65 uppercase tracking-[0.08em]">
                               Draft
                             </p>
