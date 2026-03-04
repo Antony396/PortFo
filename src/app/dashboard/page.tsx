@@ -45,6 +45,7 @@ export default function DashboardPage() {
   const DEFAULT_PORTFOLIO_NAME = 'Example Portfolio';
   const PORTFOLIO_NAME_KEY = 'my_portfolio_name';
   const ACCOUNT_PORTFOLIO_BACKUP_PREFIX = 'portfo_account_portfolio_backup_v1_';
+  const AI_BOT_NAME = 'PoPo bot';
 
   // 1. Core Portfolio State
   const [stocks, setStocks] = useState(defaultExamplePortfolio);
@@ -76,7 +77,7 @@ export default function DashboardPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: 'Hi — I can help explain your portfolio, day moves, quick risk notes, and I can help you make changes to your portfolio.',
+      content: `Hi — I’m ${AI_BOT_NAME}. I can help explain your portfolio, day moves, quick risk notes, and I can help you make changes to your portfolio.`,
     },
   ]);
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
@@ -704,7 +705,7 @@ export default function DashboardPage() {
     } catch {
       setChatMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'AI helper is temporarily unavailable. Please try again.' },
+        { role: 'assistant', content: `${AI_BOT_NAME} is temporarily unavailable. Please try again.` },
       ]);
     } finally {
       setChatLoading(false);
@@ -713,9 +714,13 @@ export default function DashboardPage() {
 
   const aiHelperPanel = (
     <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4">
-      <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-50">AI Helper</p>
+      <p className="text-[12px] font-semibold tracking-[0.02em]">
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-slate-200 to-emerald-300">{AI_BOT_NAME}</span>
+      </p>
       <p className="mt-1 text-[10px] text-blue-200/70">
-        By using AI Helper, you agree to our{' '}
+        By using{' '}
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-slate-200 to-emerald-300">{AI_BOT_NAME}</span>
+        , you agree to our{' '}
         <Link href="/privacy" className="underline hover:text-blue-100 transition-colors">
           Privacy Policy
         </Link>{' '}
@@ -875,7 +880,7 @@ export default function DashboardPage() {
                     onClick={toggleAiHelper}
                     className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
                   >
-                    AI Helper
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-slate-200 to-emerald-300">{AI_BOT_NAME}</span>
                   </button>
                 </>
               )}
@@ -1185,7 +1190,7 @@ export default function DashboardPage() {
                     onClick={toggleAiHelper}
                     className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
                   >
-                    AI Helper
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-slate-300 via-slate-200 to-emerald-300">{AI_BOT_NAME}</span>
                   </button>
                 </>
               )}

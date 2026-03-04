@@ -16,7 +16,7 @@ export default function AIDisclaimerPage() {
 
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md space-y-5 text-sm leading-relaxed text-blue-100/90">
           <p>
-            The AI Helper is provided for general informational purposes only and may generate incomplete or inaccurate output.
+            PoPo bot is provided for general informational purposes only and may generate incomplete or inaccurate output.
           </p>
 
           <section>
@@ -47,7 +47,7 @@ export default function AIDisclaimerPage() {
           <section>
             <h2 className="text-base font-semibold text-blue-50 mb-2">Use at Your Own Risk</h2>
             <p>
-              By using the AI Helper, you acknowledge these limitations and agree that you remain fully responsible for any
+              By using PoPo bot, you acknowledge these limitations and agree that you remain fully responsible for any
               actions taken.
             </p>
           </section>

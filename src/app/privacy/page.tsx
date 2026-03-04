@@ -24,14 +24,14 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-5 space-y-1">
               <li>Account details from authentication provider (Clerk), such as user ID and email.</li>
               <li>Portfolio data you enter (tickers, quantity, average price, and related inputs).</li>
-              <li>AI helper prompts and responses for product functionality and improvement.</li>
+              <li>PoPo bot prompts and responses for product functionality and improvement.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-base font-semibold text-blue-50 mb-2">How We Use Information</h2>
             <ul className="list-disc pl-5 space-y-1">
-              <li>To operate portfolio tracking, valuation tools, and AI helper features.</li>
+              <li>To operate portfolio tracking, valuation tools, and PoPo bot features.</li>
               <li>To improve app reliability, performance, and user experience.</li>
               <li>To maintain security and prevent abuse.</li>
             </ul>
