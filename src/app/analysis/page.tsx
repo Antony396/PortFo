@@ -17,6 +17,7 @@ type FilingRecord = {
   updatedAt: string;
   publishedAt: string;
   hasPublished: boolean;
+  publicReviewOptIn: boolean;
 };
 
 type PublicReviewVoteSummary = {
@@ -56,6 +57,9 @@ function normalizeFilings(items: unknown): FilingRecord[] {
       const createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : '';
       const updatedAt = typeof entry.updatedAt === 'string' ? entry.updatedAt : '';
       const publishedAt = typeof entry.publishedAt === 'string' ? entry.publishedAt : '';
+      const publicReviewOptIn = typeof entry.publicReviewOptIn === 'boolean'
+        ? entry.publicReviewOptIn
+        : Boolean(publishedAt);
 
       if (!symbol) return null;
 
@@ -67,6 +71,7 @@ function normalizeFilings(items: unknown): FilingRecord[] {
         updatedAt: updatedAt || createdAt || now,
         publishedAt,
         hasPublished: Boolean(publishedAt),
+        publicReviewOptIn,
       };
     })
     .filter((item): item is FilingRecord => Boolean(item));
@@ -98,6 +103,7 @@ export default function AnalysisPage() {
   const [isFilingsLoaded, setIsFilingsLoaded] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
+  const [publicReviewUpdatingSymbol, setPublicReviewUpdatingSymbol] = useState<string | null>(null);
   const [confirmDeleteSymbol, setConfirmDeleteSymbol] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [status, setStatus] = useState('');
@@ -389,6 +395,7 @@ export default function AnalysisPage() {
       updatedAt: now,
       publishedAt: '',
       hasPublished: false,
+      publicReviewOptIn: false,
     };
     setFilings((prev) => [record, ...prev]);
     setSymbolInput('');
@@ -439,6 +446,120 @@ export default function AnalysisPage() {
 
   const viewPublishedFiling = (symbol: string) => {
     void openFiling(symbol, true);
+  };
+
+  const updateLocalDraftPublicReviewOptIn = (symbol: string, nextValue: boolean) => {
+    try {
+      const draftKey = `${ANALYSIS_DRAFT_KEY_PREFIX}${symbol}`;
+      const rawDraft = localStorage.getItem(draftKey);
+      const parsedDraft = rawDraft ? JSON.parse(rawDraft) as unknown : null;
+      const existingDraft = parsedDraft && typeof parsedDraft === 'object'
+        ? (parsedDraft as Record<string, unknown>)
+        : {};
+
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({
+          ...existingDraft,
+          publicReviewOptIn: nextValue,
+        }),
+      );
+    } catch (error) {
+      console.error('Failed to update local public review preference', error);
+    }
+  };
+
+  const togglePublicReviewForFiling = async (filing: FilingRecord) => {
+    if (!isSignedIn) {
+      setStatus('Sign in to manage public review visibility.');
+      return;
+    }
+
+    const nextValue = !filing.publicReviewOptIn;
+    setStatus('');
+    setPublicReviewUpdatingSymbol(filing.symbol);
+
+    setFilings((prev) =>
+      prev.map((item) =>
+        item.symbol === filing.symbol
+          ? {
+              ...item,
+              publicReviewOptIn: nextValue,
+            }
+          : item,
+      ),
+    );
+
+    updateLocalDraftPublicReviewOptIn(filing.symbol, nextValue);
+
+    try {
+      const response = await fetch(`/api/analysis/${encodeURIComponent(filing.symbol)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicReviewOptIn: nextValue,
+          companyName: filing.companyName,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        if (response.status === 503) {
+          setStorageMode('local');
+          setStatus(
+            nextValue
+              ? `${filing.symbol} public review set to On locally. Account sync is unavailable.`
+              : `${filing.symbol} public review set to Off locally. Account sync is unavailable.`,
+          );
+          return;
+        }
+
+        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to update public review preference.');
+      }
+
+      setStorageMode('database');
+
+      const savedFiling = data?.filing as Partial<FilingRecord> | undefined;
+      setFilings((prev) =>
+        prev.map((item) => {
+          if (item.symbol !== filing.symbol) return item;
+
+          const publishedAt = typeof savedFiling?.publishedAt === 'string'
+            ? savedFiling.publishedAt
+            : item.publishedAt;
+
+          return {
+            ...item,
+            updatedAt: typeof savedFiling?.updatedAt === 'string' ? savedFiling.updatedAt : item.updatedAt,
+            publishedAt,
+            hasPublished: typeof savedFiling?.hasPublished === 'boolean' ? savedFiling.hasPublished : Boolean(publishedAt),
+            publicReviewOptIn:
+              typeof savedFiling?.publicReviewOptIn === 'boolean' ? savedFiling.publicReviewOptIn : nextValue,
+          };
+        }),
+      );
+
+      setStatus(nextValue ? `${filing.symbol} public review set to On.` : `${filing.symbol} public review set to Off.`);
+    } catch (error) {
+      console.error('Failed to update public review preference', error);
+
+      setFilings((prev) =>
+        prev.map((item) =>
+          item.symbol === filing.symbol
+            ? {
+                ...item,
+                publicReviewOptIn: filing.publicReviewOptIn,
+              }
+            : item,
+        ),
+      );
+
+      updateLocalDraftPublicReviewOptIn(filing.symbol, filing.publicReviewOptIn);
+      setStatus('Failed to update public review preference. Please try again.');
+    } finally {
+      setPublicReviewUpdatingSymbol(null);
+    }
   };
 
   const removeFiling = async (symbol: string) => {
@@ -698,6 +819,21 @@ export default function AnalysisPage() {
                               Edit
                             </button>
                             <button
+                              onClick={() => {
+                                void togglePublicReviewForFiling(filing);
+                              }}
+                              disabled={publicReviewUpdatingSymbol === filing.symbol}
+                              className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+                                filing.publicReviewOptIn
+                                  ? 'border-blue-300/35 bg-blue-500/15 text-blue-100 hover:bg-blue-500/25'
+                                  : 'border-white/20 bg-white/10 text-blue-50 hover:bg-white/15'
+                              }`}
+                            >
+                              {publicReviewUpdatingSymbol === filing.symbol
+                                ? 'Saving…'
+                                : `Public: ${filing.publicReviewOptIn ? 'On' : 'Off'}`}
+                            </button>
+                            <button
                               onClick={() => setConfirmDeleteSymbol(filing.symbol)}
                               disabled={removingSymbol === filing.symbol}
                               className="px-3 py-1.5 rounded-lg border border-rose-300/30 bg-rose-500/10 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
@@ -726,6 +862,21 @@ export default function AnalysisPage() {
                               className="px-3 py-1.5 rounded-lg border border-amber-300/30 bg-amber-500/10 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20 transition-all"
                             >
                               Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                void togglePublicReviewForFiling(filing);
+                              }}
+                              disabled={publicReviewUpdatingSymbol === filing.symbol}
+                              className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+                                filing.publicReviewOptIn
+                                  ? 'border-blue-300/35 bg-blue-500/15 text-blue-100 hover:bg-blue-500/25'
+                                  : 'border-white/20 bg-white/10 text-blue-50 hover:bg-white/15'
+                              }`}
+                            >
+                              {publicReviewUpdatingSymbol === filing.symbol
+                                ? 'Saving…'
+                                : `Public: ${filing.publicReviewOptIn ? 'On' : 'Off'}`}
                             </button>
                             <button
                               onClick={() => setConfirmDeleteSymbol(filing.symbol)}

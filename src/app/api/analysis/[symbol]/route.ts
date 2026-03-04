@@ -14,6 +14,11 @@ type AnalysisPayload = {
   draft?: unknown;
 };
 
+type PublicReviewPayload = {
+  publicReviewOptIn?: unknown;
+  companyName?: unknown;
+};
+
 function normalizeSymbol(raw: string) {
   return decodeURIComponent(raw || '').trim().toUpperCase();
 }
@@ -25,17 +30,27 @@ function mapFiling(row: {
   updated_at: string;
   draft?: unknown;
 }) {
+  const publishedFile = resolvePublishedFile(row.draft);
+
   return {
     symbol: row.symbol,
     companyName: row.company_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     draft: row.draft,
+    publicReviewOptIn: resolvePublicReviewOptIn(row.draft, publishedFile),
   };
 }
 
 function isAnalysisPayload(value: unknown): value is AnalysisPayload {
   return Boolean(value) && typeof value === 'object';
+}
+
+function isPublicReviewPayload(value: unknown): value is PublicReviewPayload {
+  if (!value || typeof value !== 'object') return false;
+
+  const payload = value as PublicReviewPayload;
+  return typeof payload.publicReviewOptIn === 'boolean';
 }
 
 function resolvePublishedFile(draft: unknown): unknown | null {
@@ -206,5 +221,88 @@ export async function DELETE(
   } catch (error) {
     console.error('Analysis symbol DELETE error:', error);
     return NextResponse.json({ error: 'Failed to delete analysis filing' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ symbol: string }> },
+) {
+  const { userId } = await auth();
+
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+  }
+
+  const { symbol: rawSymbol } = await context.params;
+  const symbol = normalizeSymbol(rawSymbol);
+
+  if (!symbol) {
+    return NextResponse.json({ error: 'Invalid symbol' }, { status: 400 });
+  }
+
+  try {
+    const body = await request.json();
+
+    if (!isPublicReviewPayload(body)) {
+      return NextResponse.json({ error: 'Invalid public review payload' }, { status: 400 });
+    }
+
+    const existing = await getAnalysisFilingByUserIdAndSymbol(userId, symbol);
+    const existingDraft = existing?.draft && typeof existing.draft === 'object'
+      ? (existing.draft as Record<string, unknown>)
+      : {};
+
+    const nextDraft = {
+      ...existingDraft,
+      publicReviewOptIn: body.publicReviewOptIn,
+    };
+
+    const payloadCompanyName = typeof body.companyName === 'string' && body.companyName.trim()
+      ? body.companyName.trim()
+      : '';
+    const companyName = payloadCompanyName || existing?.company_name || symbol;
+
+    const saved = await upsertAnalysisFilingByUserId(userId, {
+      symbol,
+      companyName,
+      draft: nextDraft,
+    });
+
+    if (!saved) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
+    const publishedFile = resolvePublishedFile(nextDraft);
+    const publicReviewOptIn = resolvePublicReviewOptIn(nextDraft, publishedFile);
+
+    if (publishedFile && publicReviewOptIn) {
+      try {
+        await upsertPublicAnalysisReviewByUserId(userId, {
+          symbol,
+          companyName,
+          authorLabel: `User ${userId.slice(0, 8)}`,
+          publishedFile,
+          publishedAt: resolvePublishedAt(publishedFile),
+        });
+      } catch (publicReviewError) {
+        console.error('Public analysis sync failed:', publicReviewError);
+      }
+    } else {
+      try {
+        await deletePublicAnalysisReviewByUserIdAndSymbol(userId, symbol);
+      } catch (publicReviewDeleteError) {
+        console.error('Public analysis unpublish failed:', publicReviewDeleteError);
+      }
+    }
+
+    return NextResponse.json({ filing: mapFiling(saved), storage: 'database' });
+  } catch (error) {
+    console.error('Analysis symbol PATCH error:', error);
+    return NextResponse.json({ error: 'Failed to update public review preference' }, { status: 500 });
   }
 }

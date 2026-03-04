@@ -21,6 +21,19 @@ function resolvePublishedAt(draft: unknown): string {
   return typeof candidate.publishedAt === 'string' ? candidate.publishedAt : '';
 }
 
+function resolvePublicReviewOptIn(draft: unknown, publishedAt: string): boolean {
+  if (!draft || typeof draft !== 'object') {
+    return Boolean(publishedAt);
+  }
+
+  const candidate = (draft as { publicReviewOptIn?: unknown }).publicReviewOptIn;
+  if (typeof candidate === 'boolean') {
+    return candidate;
+  }
+
+  return Boolean(publishedAt);
+}
+
 function mapFiling(row: {
   symbol: string;
   company_name: string;
@@ -29,6 +42,7 @@ function mapFiling(row: {
   draft?: unknown;
 }) {
   const publishedAt = resolvePublishedAt(row.draft);
+  const publicReviewOptIn = resolvePublicReviewOptIn(row.draft, publishedAt);
 
   return {
     symbol: row.symbol,
@@ -37,6 +51,7 @@ function mapFiling(row: {
     updatedAt: row.updated_at,
     publishedAt,
     hasPublished: Boolean(publishedAt),
+    publicReviewOptIn,
   };
 }
 
