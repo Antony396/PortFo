@@ -2,8 +2,10 @@ import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import {
   deleteAnalysisFilingByUserIdAndSymbol,
+  deletePublicAnalysisReviewByUserIdAndSymbol,
   getAnalysisFilingByUserIdAndSymbol,
   isDatabaseConfigured,
+  upsertPublicAnalysisReviewByUserId,
   upsertAnalysisFilingByUserId,
 } from '../../../../services/database';
 
@@ -34,6 +36,33 @@ function mapFiling(row: {
 
 function isAnalysisPayload(value: unknown): value is AnalysisPayload {
   return Boolean(value) && typeof value === 'object';
+}
+
+function resolvePublishedFile(draft: unknown): unknown | null {
+  if (!draft || typeof draft !== 'object') return null;
+
+  const publishedCandidate = (draft as { publishedFile?: unknown }).publishedFile;
+  return publishedCandidate && typeof publishedCandidate === 'object' ? publishedCandidate : null;
+}
+
+function resolvePublishedAt(publishedFile: unknown): string {
+  if (!publishedFile || typeof publishedFile !== 'object') return '';
+
+  const candidate = (publishedFile as { publishedAt?: unknown }).publishedAt;
+  return typeof candidate === 'string' ? candidate : '';
+}
+
+function resolvePublicReviewOptIn(draft: unknown, publishedFile: unknown | null): boolean {
+  if (!draft || typeof draft !== 'object') {
+    return Boolean(publishedFile);
+  }
+
+  const candidate = (draft as { publicReviewOptIn?: unknown }).publicReviewOptIn;
+  if (typeof candidate === 'boolean') {
+    return candidate;
+  }
+
+  return Boolean(publishedFile);
 }
 
 export async function GET(
@@ -113,6 +142,29 @@ export async function PUT(
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
+    const publishedFile = resolvePublishedFile(body.draft);
+    const publicReviewOptIn = resolvePublicReviewOptIn(body.draft, publishedFile);
+
+    if (publishedFile && publicReviewOptIn) {
+      try {
+        await upsertPublicAnalysisReviewByUserId(userId, {
+          symbol,
+          companyName,
+          authorLabel: `User ${userId.slice(0, 8)}`,
+          publishedFile,
+          publishedAt: resolvePublishedAt(publishedFile),
+        });
+      } catch (publicReviewError) {
+        console.error('Public analysis sync failed:', publicReviewError);
+      }
+    } else {
+      try {
+        await deletePublicAnalysisReviewByUserIdAndSymbol(userId, symbol);
+      } catch (publicReviewDeleteError) {
+        console.error('Public analysis unpublish failed:', publicReviewDeleteError);
+      }
+    }
+
     return NextResponse.json({ filing: mapFiling(saved), storage: 'database' });
   } catch (error) {
     console.error('Analysis symbol PUT error:', error);
@@ -143,6 +195,13 @@ export async function DELETE(
 
   try {
     await deleteAnalysisFilingByUserIdAndSymbol(userId, symbol);
+
+    try {
+      await deletePublicAnalysisReviewByUserIdAndSymbol(userId, symbol);
+    } catch (publicDeleteError) {
+      console.error('Public analysis review delete sync failed:', publicDeleteError);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Analysis symbol DELETE error:', error);

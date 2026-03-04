@@ -23,6 +23,7 @@ type ScenarioAnalysis = {
 type Draft = {
   scenarioAnalyses: Record<ScenarioKey, ScenarioAnalysis>;
   casesSummary?: string;
+  publicReviewOptIn?: boolean;
   activeScenario: ScenarioKey;
   fcf: string;
   sharesOutstanding: string;
@@ -259,6 +260,7 @@ export default function AnalysisSymbolPage() {
   const [showDcfInputs, setShowDcfInputs] = useState(false);
   const [savedDcfPrice, setSavedDcfPrice] = useState<number | null>(null);
   const [savedDcfAt, setSavedDcfAt] = useState('');
+  const [publicReviewOptIn, setPublicReviewOptIn] = useState(false);
   const [saveDcfStatus, setSaveDcfStatus] = useState('Save DCF Price');
   const [saveStatus, setSaveStatus] = useState('Save');
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
@@ -306,9 +308,15 @@ export default function AnalysisSymbolPage() {
     }
   };
 
-  const createDraftPayload = (publishedOverride?: PublishedAnalysisFile | null): Draft => ({
+  const createDraftPayload = (
+    params?: {
+      publishedOverride?: PublishedAnalysisFile | null;
+      publicReviewOptInOverride?: boolean;
+    },
+  ): Draft => ({
     scenarioAnalyses,
     casesSummary,
+    publicReviewOptIn: params?.publicReviewOptInOverride ?? publicReviewOptIn,
     activeScenario,
     fcf,
     sharesOutstanding: shares,
@@ -319,7 +327,7 @@ export default function AnalysisSymbolPage() {
     years,
     savedDcfPrice,
     savedDcfAt,
-    publishedFile: publishedOverride ?? publishedFile ?? undefined,
+    publishedFile: params?.publishedOverride ?? publishedFile ?? undefined,
   });
 
   const clearLocalAnalysisData = () => {
@@ -373,6 +381,7 @@ export default function AnalysisSymbolPage() {
     setActiveScenario('base');
     setScenarioAnalyses(defaultScenarioAnalyses);
     setCasesSummary('');
+    setPublicReviewOptIn(false);
     setShowDcfInputs(false);
     setSavedDcfPrice(null);
     setSavedDcfAt('');
@@ -389,6 +398,10 @@ export default function AnalysisSymbolPage() {
     const applyDraft = (parsed: Draft) => {
       const parsedPublishedFile = sanitizePublishedFile(parsed.publishedFile);
       setPublishedFile(parsedPublishedFile);
+      const restoredPublicReviewOptIn = typeof parsed.publicReviewOptIn === 'boolean'
+        ? parsed.publicReviewOptIn
+        : Boolean(parsedPublishedFile);
+      setPublicReviewOptIn(restoredPublicReviewOptIn);
 
       const restoredSummary = typeof parsed.casesSummary === 'string'
         ? parsed.casesSummary
@@ -558,7 +571,7 @@ export default function AnalysisSymbolPage() {
     if (isSignedIn && user?.id) {
       saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
     }
-  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName]);
+  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, publicReviewOptIn, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName]);
 
   const loadStockData = async (targetSymbol: string) => {
     if (!targetSymbol) {
@@ -749,10 +762,12 @@ export default function AnalysisSymbolPage() {
     }
   };
 
-  const saveFile = async () => {
+  const saveFile = async (options?: { publicReviewOptInOverride?: boolean }) => {
     if (!analysisSymbol || isViewMode) return;
 
     setSaveStatus('Saving...');
+
+    const effectivePublicReviewOptIn = options?.publicReviewOptInOverride ?? publicReviewOptIn;
 
     const publishedAt = new Date().toISOString();
     const nextPublishedFile: PublishedAnalysisFile = {
@@ -768,7 +783,10 @@ export default function AnalysisSymbolPage() {
 
     setPublishedFile(nextPublishedFile);
 
-    const draft = createDraftPayload(nextPublishedFile);
+    const draft = createDraftPayload({
+      publishedOverride: nextPublishedFile,
+      publicReviewOptInOverride: effectivePublicReviewOptIn,
+    });
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
     updateLocalFilingsRecord(analysisSymbol, companyName || analysisSymbol, publishedAt);
@@ -789,6 +807,12 @@ export default function AnalysisSymbolPage() {
         : 'Saved To Browser',
     );
     setTimeout(() => setSaveStatus(defaultSaveLabel), 1500);
+  };
+
+  const togglePublicReviewOptIn = () => {
+    const nextValue = !publicReviewOptIn;
+    setPublicReviewOptIn(nextValue);
+    void saveFile({ publicReviewOptInOverride: nextValue });
   };
 
   const saveDcfPriceToFile = () => {
@@ -983,10 +1007,23 @@ export default function AnalysisSymbolPage() {
             ) : (
               <>
                 <button
-                  onClick={saveFile}
+                  onClick={() => {
+                    void saveFile();
+                  }}
                   className="px-4 py-2.5 bg-emerald-500/15 border border-emerald-300/35 rounded-xl text-[12px] font-semibold text-emerald-100 hover:bg-emerald-500/25 transition-all"
                 >
                   {saveStatus}
+                </button>
+                <button
+                  onClick={togglePublicReviewOptIn}
+                  disabled={!isSignedIn}
+                  className={`px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+                    publicReviewOptIn
+                      ? 'bg-blue-500/15 border border-blue-300/35 text-blue-100 hover:bg-blue-500/25'
+                      : 'bg-white/10 border border-white/15 text-blue-50 hover:bg-white/15'
+                  }`}
+                >
+                  Public Review: {publicReviewOptIn ? 'On' : 'Off'}
                 </button>
                 <Link
                   href={`/analysis/${encodeURIComponent(analysisSymbol)}?view=1`}
@@ -1008,6 +1045,12 @@ export default function AnalysisSymbolPage() {
         {isSignedIn && storageMode === 'local' && (
           <div className="mb-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-100">
             Account sync is unavailable on this deployment right now. This analysis is saving to this browser only.
+          </div>
+        )}
+
+        {!isSignedIn && !isViewMode && (
+          <div className="mb-5 rounded-xl border border-blue-300/25 bg-blue-500/10 px-4 py-3 text-xs font-semibold text-blue-100">
+            Sign in to toggle public review sharing for this analysis file.
           </div>
         )}
 

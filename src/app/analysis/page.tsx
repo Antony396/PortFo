@@ -19,6 +19,24 @@ type FilingRecord = {
   hasPublished: boolean;
 };
 
+type PublicReviewVoteSummary = {
+  upvotes: number;
+  downvotes: number;
+  score: number;
+  userVote: -1 | 0 | 1;
+};
+
+type PublicReviewSearchResult = {
+  reviewUserId: string;
+  symbol: string;
+  companyName: string;
+  authorLabel: string;
+  publishedAt: string;
+  updatedAt: string;
+  summaryPreview: string;
+  votes: PublicReviewVoteSummary;
+};
+
 type StorageMode = 'unknown' | 'database' | 'local';
 
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
@@ -83,6 +101,11 @@ export default function AnalysisPage() {
   const [confirmDeleteSymbol, setConfirmDeleteSymbol] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [status, setStatus] = useState('');
+  const [publicSearchSymbol, setPublicSearchSymbol] = useState('');
+  const [publicReviews, setPublicReviews] = useState<PublicReviewSearchResult[]>([]);
+  const [isPublicSearching, setIsPublicSearching] = useState(false);
+  const [publicSearchError, setPublicSearchError] = useState('');
+  const [hasPublicSearchResult, setHasPublicSearchResult] = useState(false);
 
   const getAccountFilingsBackupKey = (userId: string) => `${ACCOUNT_ANALYSIS_FILINGS_BACKUP_PREFIX}${userId}`;
   const getAccountDraftBackupKey = (userId: string, symbol: string) =>
@@ -470,6 +493,48 @@ export default function AnalysisPage() {
     container.scrollBy({ left: amount, behavior: 'smooth' });
   };
 
+  const searchPublicReviews = async () => {
+    const normalizedSymbol = publicSearchSymbol.trim().toUpperCase();
+    setPublicSearchError('');
+
+    if (!normalizedSymbol) {
+      setPublicSearchError('Enter a stock symbol to search public reviews.');
+      setPublicReviews([]);
+      setHasPublicSearchResult(false);
+      return;
+    }
+
+    setIsPublicSearching(true);
+
+    try {
+      const response = await fetch(`/api/analysis/public?symbol=${encodeURIComponent(normalizedSymbol)}`, {
+        cache: 'no-store',
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setPublicSearchError(typeof data?.error === 'string' ? data.error : 'Failed to search public reviews.');
+        setPublicReviews([]);
+        setHasPublicSearchResult(false);
+        return;
+      }
+
+      const reviews = Array.isArray(data?.reviews)
+        ? data.reviews as PublicReviewSearchResult[]
+        : [];
+
+      setPublicReviews(reviews);
+      setHasPublicSearchResult(true);
+    } catch (error) {
+      console.error('Failed to search public analysis reviews', error);
+      setPublicSearchError('Failed to search public reviews. Please try again.');
+      setPublicReviews([]);
+      setHasPublicSearchResult(false);
+    } finally {
+      setIsPublicSearching(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-12 px-4 font-sans text-slate-100">
       <div className="max-w-[1300px] mx-auto">
@@ -677,6 +742,87 @@ export default function AnalysisPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="mt-6 bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
+            <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-1">Community Reviews</p>
+            <p className="text-xs text-blue-100/80 mb-4">
+              Search public good copies by stock symbol and open reviews from other accounts.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+              <div>
+                <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
+                  Symbol
+                </label>
+                <input
+                  type="text"
+                  value={publicSearchSymbol}
+                  onChange={(event) => setPublicSearchSymbol(event.target.value.toUpperCase())}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void searchPublicReviews();
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
+                  placeholder="AAPL"
+                />
+              </div>
+
+              <button
+                onClick={searchPublicReviews}
+                className="w-full sm:w-auto px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+              >
+                {isPublicSearching ? 'Searching…' : 'Search Public Reviews'}
+              </button>
+            </div>
+
+            {publicSearchError && (
+              <p className="mt-3 text-xs font-semibold text-rose-200/90">{publicSearchError}</p>
+            )}
+
+            {hasPublicSearchResult && !publicSearchError && publicReviews.length === 0 && (
+              <p className="mt-3 text-xs font-semibold text-blue-100/80">No public reviews found for this symbol yet.</p>
+            )}
+
+            {publicReviews.length > 0 && (
+              <div className="mt-4 space-y-3">
+                {publicReviews.map((review) => (
+                  <div
+                    key={`${review.reviewUserId}_${review.symbol}`}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-blue-50">{review.symbol} · {review.companyName}</p>
+                        <p className="text-[11px] text-blue-100/80 mt-1">
+                          By {review.authorLabel || 'Publisher'} · Published {formatDate(review.publishedAt)}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <p className="text-[11px] font-semibold text-blue-100/85">
+                          Score: {review.votes.score} · ▲ {review.votes.upvotes} · ▼ {review.votes.downvotes}
+                        </p>
+                        <Link
+                          href={`/analysis/public/${encodeURIComponent(review.symbol)}/${encodeURIComponent(review.reviewUserId)}`}
+                          className="px-3 py-1.5 rounded-lg border border-blue-300/30 bg-blue-500/10 text-[11px] font-semibold text-blue-200 hover:bg-blue-500/20 transition-all"
+                        >
+                          Open Review
+                        </Link>
+                      </div>
+                    </div>
+
+                    {review.summaryPreview && (
+                      <p className="mt-2 text-[12px] text-blue-100/85 leading-relaxed line-clamp-2">
+                        {review.summaryPreview}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         {confirmDeleteSymbol && (

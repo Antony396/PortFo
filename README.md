@@ -8,6 +8,7 @@ A modern, professional stock portfolio tracking application built with Next.js 1
 **Secure Authentication** - User authentication powered by Clerk
 **Portfolio Management** - Add, remove, and track your stock holdings
 **Analysis Save + View Mode** - Save once to store your draft and refresh the published view copy
+**Community Reviews + Voting** - Search public reviews by symbol and upvote/downvote other publishers
 **Account Cloud Save** - Signed-in users can load/save portfolios to Supabase
 **Comprehensive Analytics** - View gains/losses, percentages, and portfolio value
 **Responsive Design** - Mobile-first UI built with Tailwind CSS
@@ -140,9 +141,24 @@ Returns one filing row and its saved analysis draft.
 
 Saves a symbol's analysis draft (including optional published clean snapshot) to the signed-in user's account.
 
+Signed-in saves with a published good copy sync to the public community review table only when that file's `Public Review` toggle is set to `On`.
+
 `DELETE /api/analysis/[symbol]`
 
 Deletes a symbol filing (and its draft) from the signed-in user's account.
+
+### Public Community Reviews
+`GET /api/analysis/public?symbol=[symbol]`
+
+Searches public reviews for a stock symbol (includes vote summary and your vote when signed in).
+
+`GET /api/analysis/public/[symbol]/[authorId]`
+
+Loads one public review by symbol and publisher.
+
+`PUT /api/analysis/public/[symbol]/[authorId]/vote`
+
+Creates/updates/removes your vote (`1`, `-1`, or `0`) on that public review.
 
 ### Health Check
 `GET /api/health`
@@ -260,6 +276,27 @@ create table if not exists public.analysis_filings (
 	created_at timestamptz not null default now(),
 	updated_at timestamptz not null default now(),
 	primary key (user_id, symbol)
+);
+
+create table if not exists public.analysis_public_reviews (
+	review_user_id text not null,
+	symbol text not null,
+	company_name text not null default '',
+	author_label text not null default '',
+	published_file jsonb not null,
+	published_at timestamptz not null default now(),
+	updated_at timestamptz not null default now(),
+	primary key (review_user_id, symbol)
+);
+
+create table if not exists public.analysis_public_review_votes (
+	review_user_id text not null,
+	symbol text not null,
+	voter_user_id text not null,
+	vote smallint not null check (vote in (-1, 1)),
+	created_at timestamptz not null default now(),
+	updated_at timestamptz not null default now(),
+	primary key (review_user_id, symbol, voter_user_id)
 );
 ```
 

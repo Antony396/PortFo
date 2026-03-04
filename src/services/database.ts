@@ -17,6 +17,25 @@ export type AnalysisFilingRow = {
 	draft?: unknown;
 };
 
+export type PublicAnalysisReviewRow = {
+	review_user_id: string;
+	symbol: string;
+	company_name: string;
+	author_label: string;
+	published_at: string;
+	updated_at: string;
+	published_file?: unknown;
+};
+
+export type PublicAnalysisReviewVoteRow = {
+	review_user_id: string;
+	symbol: string;
+	voter_user_id: string;
+	vote: number;
+	created_at: string;
+	updated_at: string;
+};
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -257,6 +276,253 @@ export async function deleteAnalysisFilingByUserIdAndSymbol(userId: string, symb
 
 	if (!response.ok) {
 		throw new Error('Failed to delete analysis filing from database');
+	}
+
+	return true;
+}
+
+export async function upsertPublicAnalysisReviewByUserId(
+	userId: string,
+	params: {
+		symbol: string;
+		companyName: string;
+		authorLabel?: string;
+		publishedFile: unknown;
+		publishedAt?: string;
+	},
+) {
+	if (!isDatabaseConfigured()) {
+		return false;
+	}
+
+	const normalizedSymbol = params.symbol.trim().toUpperCase();
+	const companyName = params.companyName.trim() || normalizedSymbol;
+	const now = new Date().toISOString();
+
+	const payload = {
+		review_user_id: userId,
+		symbol: normalizedSymbol,
+		company_name: companyName,
+		author_label: (params.authorLabel || '').trim(),
+		published_file: params.publishedFile,
+		published_at: params.publishedAt || now,
+		updated_at: now,
+	};
+
+	const response = await fetchWithRetry(`${supabaseUrl}/rest/v1/analysis_public_reviews?on_conflict=review_user_id,symbol`, {
+		method: 'POST',
+		headers: {
+			...getHeaders(),
+			Prefer: 'resolution=merge-duplicates,return=representation',
+		},
+		body: JSON.stringify([payload]),
+	});
+
+	if (!response.ok) {
+		throw new Error('Failed to save public analysis review to database');
+	}
+
+	const rows = await response.json();
+	if (!Array.isArray(rows) || rows.length === 0) {
+		return null;
+	}
+
+	return rows[0] as PublicAnalysisReviewRow;
+}
+
+export async function getPublicAnalysisReviewsBySymbol(symbol: string, limit = 25): Promise<PublicAnalysisReviewRow[] | null> {
+	if (!isDatabaseConfigured()) {
+		return null;
+	}
+
+	const normalizedSymbol = symbol.trim().toUpperCase();
+	if (!normalizedSymbol) {
+		return [];
+	}
+
+	const normalizedLimit = Math.max(1, Math.min(limit, 50));
+	const query = `${supabaseUrl}/rest/v1/analysis_public_reviews?symbol=eq.${encodeURIComponent(normalizedSymbol)}&select=review_user_id,symbol,company_name,author_label,published_at,updated_at,published_file&order=published_at.desc&limit=${normalizedLimit}`;
+	const response = await fetchWithRetry(query, {
+		method: 'GET',
+		headers: getHeaders(),
+		cache: 'no-store',
+	});
+
+	if (!response.ok) {
+		throw new Error('Failed to fetch public analysis reviews from database');
+	}
+
+	const rows = await response.json();
+	if (!Array.isArray(rows)) {
+		return [];
+	}
+
+	return rows as PublicAnalysisReviewRow[];
+}
+
+export async function getPublicAnalysisReviewByUserIdAndSymbol(reviewUserId: string, symbol: string): Promise<PublicAnalysisReviewRow | null> {
+	if (!isDatabaseConfigured()) {
+		return null;
+	}
+
+	const normalizedSymbol = symbol.trim().toUpperCase();
+	const query = `${supabaseUrl}/rest/v1/analysis_public_reviews?review_user_id=eq.${encodeURIComponent(reviewUserId)}&symbol=eq.${encodeURIComponent(normalizedSymbol)}&select=review_user_id,symbol,company_name,author_label,published_at,updated_at,published_file&limit=1`;
+	const response = await fetchWithRetry(query, {
+		method: 'GET',
+		headers: getHeaders(),
+		cache: 'no-store',
+	});
+
+	if (!response.ok) {
+		throw new Error('Failed to fetch public analysis review from database');
+	}
+
+	const rows = await response.json();
+	if (!Array.isArray(rows) || rows.length === 0) {
+		return null;
+	}
+
+	return rows[0] as PublicAnalysisReviewRow;
+}
+
+export async function deletePublicAnalysisReviewByUserIdAndSymbol(reviewUserId: string, symbol: string) {
+	if (!isDatabaseConfigured()) {
+		return false;
+	}
+
+	const normalizedSymbol = symbol.trim().toUpperCase();
+	const response = await fetchWithRetry(
+		`${supabaseUrl}/rest/v1/analysis_public_reviews?review_user_id=eq.${encodeURIComponent(reviewUserId)}&symbol=eq.${encodeURIComponent(normalizedSymbol)}`,
+		{
+			method: 'DELETE',
+			headers: {
+				...getHeaders(),
+				Prefer: 'return=minimal',
+			},
+		},
+	);
+
+	if (!response.ok) {
+		throw new Error('Failed to delete public analysis review from database');
+	}
+
+	return true;
+}
+
+export async function getPublicAnalysisReviewVotesBySymbol(symbol: string): Promise<PublicAnalysisReviewVoteRow[] | null> {
+	if (!isDatabaseConfigured()) {
+		return null;
+	}
+
+	const normalizedSymbol = symbol.trim().toUpperCase();
+	const query = `${supabaseUrl}/rest/v1/analysis_public_review_votes?symbol=eq.${encodeURIComponent(normalizedSymbol)}&select=review_user_id,symbol,voter_user_id,vote,created_at,updated_at`;
+	const response = await fetchWithRetry(query, {
+		method: 'GET',
+		headers: getHeaders(),
+		cache: 'no-store',
+	});
+
+	if (!response.ok) {
+		throw new Error('Failed to fetch public review votes from database');
+	}
+
+	const rows = await response.json();
+	if (!Array.isArray(rows)) {
+		return [];
+	}
+
+	return rows as PublicAnalysisReviewVoteRow[];
+}
+
+export async function getPublicAnalysisReviewVotesByReview(reviewUserId: string, symbol: string): Promise<PublicAnalysisReviewVoteRow[] | null> {
+	if (!isDatabaseConfigured()) {
+		return null;
+	}
+
+	const normalizedSymbol = symbol.trim().toUpperCase();
+	const query = `${supabaseUrl}/rest/v1/analysis_public_review_votes?review_user_id=eq.${encodeURIComponent(reviewUserId)}&symbol=eq.${encodeURIComponent(normalizedSymbol)}&select=review_user_id,symbol,voter_user_id,vote,created_at,updated_at`;
+	const response = await fetchWithRetry(query, {
+		method: 'GET',
+		headers: getHeaders(),
+		cache: 'no-store',
+	});
+
+	if (!response.ok) {
+		throw new Error('Failed to fetch public review vote summary from database');
+	}
+
+	const rows = await response.json();
+	if (!Array.isArray(rows)) {
+		return [];
+	}
+
+	return rows as PublicAnalysisReviewVoteRow[];
+}
+
+export async function upsertPublicAnalysisReviewVote(params: {
+	reviewUserId: string;
+	symbol: string;
+	voterUserId: string;
+	vote: 1 | -1;
+}) {
+	if (!isDatabaseConfigured()) {
+		return false;
+	}
+
+	const normalizedSymbol = params.symbol.trim().toUpperCase();
+	const now = new Date().toISOString();
+	const payload = {
+		review_user_id: params.reviewUserId,
+		symbol: normalizedSymbol,
+		voter_user_id: params.voterUserId,
+		vote: params.vote,
+		updated_at: now,
+	};
+
+	const response = await fetchWithRetry(`${supabaseUrl}/rest/v1/analysis_public_review_votes?on_conflict=review_user_id,symbol,voter_user_id`, {
+		method: 'POST',
+		headers: {
+			...getHeaders(),
+			Prefer: 'resolution=merge-duplicates,return=representation',
+		},
+		body: JSON.stringify([payload]),
+	});
+
+	if (!response.ok) {
+		throw new Error('Failed to upsert public analysis review vote');
+	}
+
+	const rows = await response.json();
+	if (!Array.isArray(rows) || rows.length === 0) {
+		return null;
+	}
+
+	return rows[0] as PublicAnalysisReviewVoteRow;
+}
+
+export async function deletePublicAnalysisReviewVote(params: {
+	reviewUserId: string;
+	symbol: string;
+	voterUserId: string;
+}) {
+	if (!isDatabaseConfigured()) {
+		return false;
+	}
+
+	const normalizedSymbol = params.symbol.trim().toUpperCase();
+	const response = await fetchWithRetry(
+		`${supabaseUrl}/rest/v1/analysis_public_review_votes?review_user_id=eq.${encodeURIComponent(params.reviewUserId)}&symbol=eq.${encodeURIComponent(normalizedSymbol)}&voter_user_id=eq.${encodeURIComponent(params.voterUserId)}`,
+		{
+			method: 'DELETE',
+			headers: {
+				...getHeaders(),
+				Prefer: 'return=minimal',
+			},
+		},
+	);
+
+	if (!response.ok) {
+		throw new Error('Failed to delete public analysis review vote');
 	}
 
 	return true;
