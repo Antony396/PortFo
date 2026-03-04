@@ -21,6 +21,8 @@ type StorageMode = 'unknown' | 'database' | 'local';
 
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
 const ANALYSIS_DRAFT_KEY_PREFIX = 'portfo_stock_analysis_draft_v1_';
+const ACCOUNT_ANALYSIS_FILINGS_BACKUP_PREFIX = 'portfo_account_analysis_filings_backup_v1_';
+const ACCOUNT_ANALYSIS_DRAFT_BACKUP_PREFIX = 'portfo_account_analysis_draft_backup_v1_';
 
 function normalizeFilings(items: unknown): FilingRecord[] {
   if (!Array.isArray(items)) return [];
@@ -59,13 +61,14 @@ function formatDate(value: string) {
 }
 
 export default function AnalysisPage() {
-  const { isSignedIn, isLoaded: isUserLoaded } = useUser();
+  const { user, isSignedIn, isLoaded: isUserLoaded } = useUser();
   const router = useRouter();
   const [symbolInput, setSymbolInput] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const filingsTableScrollRef = useRef<HTMLDivElement>(null);
+  const previousAuthStateRef = useRef<boolean | null>(null);
 
   const [filings, setFilings] = useState<FilingRecord[]>([]);
   const [isFilingsLoaded, setIsFilingsLoaded] = useState(false);
@@ -74,6 +77,86 @@ export default function AnalysisPage() {
   const [confirmDeleteSymbol, setConfirmDeleteSymbol] = useState<string | null>(null);
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [status, setStatus] = useState('');
+
+  const getAccountFilingsBackupKey = (userId: string) => `${ACCOUNT_ANALYSIS_FILINGS_BACKUP_PREFIX}${userId}`;
+  const getAccountDraftBackupKey = (userId: string, symbol: string) =>
+    `${ACCOUNT_ANALYSIS_DRAFT_BACKUP_PREFIX}${userId}_${symbol.trim().toUpperCase()}`;
+
+  const saveAccountFilingsBackup = (userId: string, items: FilingRecord[]) => {
+    try {
+      const normalizedItems = normalizeFilings(items);
+      const key = getAccountFilingsBackupKey(userId);
+
+      if (normalizedItems.length === 0) {
+        const existingRaw = localStorage.getItem(key);
+        if (existingRaw) {
+          const existingItems = normalizeFilings(JSON.parse(existingRaw) as unknown);
+          if (existingItems.length > 0) {
+            return;
+          }
+        }
+      }
+
+      localStorage.setItem(key, JSON.stringify(normalizedItems));
+    } catch (error) {
+      console.error('Failed to save account analysis filings backup', error);
+    }
+  };
+
+  const loadAccountFilingsBackup = (userId: string): FilingRecord[] | null => {
+    try {
+      const raw = localStorage.getItem(getAccountFilingsBackupKey(userId));
+      if (!raw) return null;
+
+      return normalizeFilings(JSON.parse(raw) as unknown);
+    } catch (error) {
+      console.error('Failed to load account analysis filings backup', error);
+      return null;
+    }
+  };
+
+  const clearLocalAnalysisData = () => {
+    try {
+      const rawFilings = localStorage.getItem(FILINGS_KEY);
+      if (rawFilings) {
+        const parsed = JSON.parse(rawFilings) as Array<{ symbol?: string }>;
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item) => {
+            if (typeof item?.symbol === 'string' && item.symbol.trim()) {
+              localStorage.removeItem(`${ANALYSIS_DRAFT_KEY_PREFIX}${item.symbol.trim().toUpperCase()}`);
+            }
+          });
+        }
+      }
+
+      const keysToDelete: string[] = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(ANALYSIS_DRAFT_KEY_PREFIX)) {
+          keysToDelete.push(key);
+        }
+      }
+      keysToDelete.forEach((key) => localStorage.removeItem(key));
+      localStorage.removeItem(FILINGS_KEY);
+    } catch (error) {
+      console.error('Failed to clear local analysis data', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!isUserLoaded) return;
+
+    const wasSignedIn = previousAuthStateRef.current;
+    if (wasSignedIn && !isSignedIn) {
+      clearLocalAnalysisData();
+      setFilings([]);
+      setStorageMode('local');
+      setStatus('Logged out. Analysis table reset to default state.');
+      setIsFilingsLoaded(true);
+    }
+
+    previousAuthStateRef.current = isSignedIn;
+  }, [isSignedIn, isUserLoaded]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -90,6 +173,7 @@ export default function AnalysisPage() {
     if (!isUserLoaded) return;
 
     setStorageMode('unknown');
+    const signedInUserId = typeof user?.id === 'string' ? user.id : '';
 
     const loadLocalFilings = () => {
       try {
@@ -110,6 +194,17 @@ export default function AnalysisPage() {
       }
     };
 
+    const restoreFromAccountBackup = () => {
+      if (!signedInUserId) return false;
+      const backup = loadAccountFilingsBackup(signedInUserId);
+      if (!backup) return false;
+
+      setFilings(backup);
+      setStorageMode('local');
+      setStatus('Recovered filings from account backup while cloud sync was unavailable.');
+      return true;
+    };
+
     const loadFilings = async () => {
       if (!isSignedIn) {
         loadLocalFilings();
@@ -121,6 +216,10 @@ export default function AnalysisPage() {
         const response = await fetch('/api/analysis', { cache: 'no-store' });
 
         if (!response.ok) {
+          if (restoreFromAccountBackup()) {
+            setIsFilingsLoaded(true);
+            return;
+          }
           loadLocalFilings();
           setIsFilingsLoaded(true);
           return;
@@ -132,11 +231,20 @@ export default function AnalysisPage() {
         if (data?.storage === 'database') {
           setFilings(dbFilings);
           setStorageMode('database');
+          if (signedInUserId) {
+            saveAccountFilingsBackup(signedInUserId, dbFilings);
+          }
         } else {
+          if (restoreFromAccountBackup()) {
+            return;
+          }
           loadLocalFilings();
         }
       } catch (error) {
         console.error('Failed to load account analysis filings', error);
+        if (restoreFromAccountBackup()) {
+          return;
+        }
         loadLocalFilings();
       } finally {
         setIsFilingsLoaded(true);
@@ -144,12 +252,17 @@ export default function AnalysisPage() {
     };
 
     loadFilings();
-  }, [isSignedIn, isUserLoaded]);
+  }, [isSignedIn, isUserLoaded, user?.id]);
 
   useEffect(() => {
     if (!isFilingsLoaded) return;
     localStorage.setItem(FILINGS_KEY, JSON.stringify(filings));
   }, [filings, isFilingsLoaded]);
+
+  useEffect(() => {
+    if (!isUserLoaded || !isSignedIn || !isFilingsLoaded || !user?.id) return;
+    saveAccountFilingsBackup(user.id, filings);
+  }, [filings, isFilingsLoaded, isSignedIn, isUserLoaded, user?.id]);
 
   const saveFilingToAccount = async (record: FilingRecord) => {
     if (!isSignedIn) return false;
@@ -288,6 +401,9 @@ export default function AnalysisPage() {
 
     setFilings((prev) => prev.filter((item) => item.symbol !== symbol));
     localStorage.removeItem(`${ANALYSIS_DRAFT_KEY_PREFIX}${symbol}`);
+    if (isSignedIn && user?.id) {
+      localStorage.removeItem(getAccountDraftBackupKey(user.id, symbol));
+    }
 
     if (!isSignedIn) {
       setStatus(`${symbol} removed from your filings table.`);

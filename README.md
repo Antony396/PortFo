@@ -194,6 +194,14 @@ npm start
 - Guest users: portfolio is stored in browser localStorage
 - Signed-in users: manual save writes to Supabase and browser localStorage
 - Signed-in users: dashboard load prioritizes Supabase holdings
+- Signed-in users: app also keeps account-scoped local recovery snapshots for holdings and analysis drafts
+- If cloud sync is temporarily unavailable, signed-in pages auto-restore from latest account-scoped recovery snapshot
+
+### Data Durability Safeguards
+- Supabase REST requests now retry on transient failures (`408`, `425`, `429`, `500`, `502`, `503`, `504`)
+- Portfolio and analysis pages maintain hidden per-account recovery backups in browser storage
+- Empty cloud responses do not overwrite richer local recovery snapshots
+- Logout reset still clears active-session local data, while account-scoped recovery snapshots remain available for that user’s future sign-in
 
 ## Security Considerations
 

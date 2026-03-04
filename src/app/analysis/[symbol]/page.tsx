@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
@@ -35,6 +35,12 @@ type Draft = {
   growthRate?: string;
 };
 
+type DraftRecoverySnapshot = {
+  draft: Draft;
+  companyName: string;
+  updatedAt: string;
+};
+
 type FilingRecord = {
   symbol: string;
   companyName: string;
@@ -46,6 +52,7 @@ type StorageMode = 'unknown' | 'database' | 'local';
 
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
 const ANALYSIS_DRAFT_KEY_PREFIX = 'portfo_stock_analysis_draft_v1_';
+const ACCOUNT_ANALYSIS_DRAFT_BACKUP_PREFIX = 'portfo_account_analysis_draft_backup_v1_';
 
 const defaultAssumptions = {
   discountRate: '0.10',
@@ -144,9 +151,10 @@ function updateLocalFilingsRecord(symbol: string, companyName: string) {
 }
 
 export default function AnalysisSymbolPage() {
-  const { isSignedIn, isLoaded: isUserLoaded } = useUser();
+  const { user, isSignedIn, isLoaded: isUserLoaded } = useUser();
   const params = useParams<{ symbol: string }>();
   const analysisSymbol = decodeURIComponent(params.symbol || '').trim().toUpperCase();
+  const previousAuthStateRef = useRef<boolean | null>(null);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -179,9 +187,84 @@ export default function AnalysisSymbolPage() {
 
   const draftKey = useMemo(() => `${ANALYSIS_DRAFT_KEY_PREFIX}${analysisSymbol}`, [analysisSymbol]);
 
+  const getAccountDraftBackupKey = (userId: string, symbol: string) =>
+    `${ACCOUNT_ANALYSIS_DRAFT_BACKUP_PREFIX}${userId}_${symbol.trim().toUpperCase()}`;
+
+  const saveAccountDraftBackup = (userId: string, symbol: string, draft: Draft, fallbackCompanyName: string) => {
+    try {
+      const snapshot: DraftRecoverySnapshot = {
+        draft,
+        companyName: fallbackCompanyName.trim() || symbol,
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(getAccountDraftBackupKey(userId, symbol), JSON.stringify(snapshot));
+    } catch (error) {
+      console.error('Failed to save account analysis draft backup', error);
+    }
+  };
+
+  const loadAccountDraftBackup = (userId: string, symbol: string): DraftRecoverySnapshot | null => {
+    try {
+      const raw = localStorage.getItem(getAccountDraftBackupKey(userId, symbol));
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as Partial<DraftRecoverySnapshot>;
+      if (!parsed?.draft || typeof parsed.draft !== 'object') return null;
+
+      return {
+        draft: parsed.draft as Draft,
+        companyName: typeof parsed.companyName === 'string' ? parsed.companyName : symbol,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
+      };
+    } catch (error) {
+      console.error('Failed to load account analysis draft backup', error);
+      return null;
+    }
+  };
+
+  const clearLocalAnalysisData = () => {
+    try {
+      const rawFilings = localStorage.getItem(FILINGS_KEY);
+      if (rawFilings) {
+        const parsed = JSON.parse(rawFilings) as Array<{ symbol?: string }>;
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item) => {
+            if (typeof item?.symbol === 'string' && item.symbol.trim()) {
+              localStorage.removeItem(`${ANALYSIS_DRAFT_KEY_PREFIX}${item.symbol.trim().toUpperCase()}`);
+            }
+          });
+        }
+      }
+
+      const keysToDelete: string[] = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(ANALYSIS_DRAFT_KEY_PREFIX)) {
+          keysToDelete.push(key);
+        }
+      }
+      keysToDelete.forEach((key) => localStorage.removeItem(key));
+      localStorage.removeItem(FILINGS_KEY);
+    } catch (error) {
+      console.error('Failed to clear local analysis data', error);
+    }
+  };
+
   useEffect(() => {
     setSaveStatus(defaultSaveLabel);
   }, [defaultSaveLabel]);
+
+  useEffect(() => {
+    if (!isUserLoaded) return;
+
+    const wasSignedIn = previousAuthStateRef.current;
+    if (wasSignedIn && !isSignedIn) {
+      clearLocalAnalysisData();
+      setStorageMode('local');
+    }
+
+    previousAuthStateRef.current = isSignedIn;
+  }, [isSignedIn, isUserLoaded]);
 
   useEffect(() => {
     setIsDraftHydrated(false);
@@ -253,6 +336,22 @@ export default function AnalysisSymbolPage() {
       }
     };
 
+    const signedInUserId = typeof user?.id === 'string' ? user.id : '';
+
+    const restoreFromAccountBackup = () => {
+      if (!signedInUserId) return false;
+      const backup = loadAccountDraftBackup(signedInUserId, analysisSymbol);
+      if (!backup) return false;
+
+      applyDraft(backup.draft);
+      if (backup.companyName.trim()) {
+        setCompanyName(backup.companyName.trim());
+      }
+      setSaveStatus('Recovered From Account Backup');
+      setTimeout(() => setSaveStatus(defaultSaveLabel), 2000);
+      return true;
+    };
+
     const restoreDraft = async () => {
       if (!isSignedIn) {
         setStorageMode('local');
@@ -268,6 +367,9 @@ export default function AnalysisSymbolPage() {
 
         if (!response.ok) {
           setStorageMode('local');
+          if (restoreFromAccountBackup()) {
+            return;
+          }
           restoreFromLocal();
           return;
         }
@@ -277,16 +379,31 @@ export default function AnalysisSymbolPage() {
         const filing = data?.filing as { companyName?: string; draft?: unknown } | null;
 
         if (!filing) {
+          if (restoreFromAccountBackup()) {
+            return;
+          }
           restoreFromLocal();
           return;
         }
+
+        const resolvedCompanyName = typeof filing.companyName === 'string' && filing.companyName.trim()
+          ? filing.companyName.trim()
+          : analysisSymbol;
 
         if (typeof filing.companyName === 'string' && filing.companyName.trim()) {
           setCompanyName(filing.companyName.trim());
         }
 
         if (filing.draft && typeof filing.draft === 'object') {
-          applyDraft(filing.draft as Draft);
+          const parsedDraft = filing.draft as Draft;
+          applyDraft(parsedDraft);
+          if (signedInUserId) {
+            saveAccountDraftBackup(signedInUserId, analysisSymbol, parsedDraft, resolvedCompanyName);
+          }
+          return;
+        }
+
+        if (restoreFromAccountBackup()) {
           return;
         }
 
@@ -294,6 +411,9 @@ export default function AnalysisSymbolPage() {
       } catch (error) {
         console.error('Failed to restore account analysis draft', error);
         setStorageMode('local');
+        if (restoreFromAccountBackup()) {
+          return;
+        }
         restoreFromLocal();
       } finally {
         setIsDraftHydrated(true);
@@ -301,7 +421,7 @@ export default function AnalysisSymbolPage() {
     };
 
     restoreDraft();
-  }, [analysisSymbol, draftKey, isSignedIn, isUserLoaded]);
+  }, [analysisSymbol, draftKey, isSignedIn, isUserLoaded, user?.id]);
 
   useEffect(() => {
     if (!analysisSymbol || !isDraftHydrated) return;
@@ -321,7 +441,11 @@ export default function AnalysisSymbolPage() {
     };
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
-  }, [analysisSymbol, draftKey, isDraftHydrated, scenarioAnalyses, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt]);
+
+    if (isSignedIn && user?.id) {
+      saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
+    }
+  }, [analysisSymbol, draftKey, isDraftHydrated, scenarioAnalyses, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, isSignedIn, user?.id, companyName]);
 
   const loadStockData = async (targetSymbol: string) => {
     if (!targetSymbol) {
@@ -502,6 +626,9 @@ export default function AnalysisSymbolPage() {
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
     updateLocalFilingsRecord(analysisSymbol, companyName || analysisSymbol);
+    if (isSignedIn && user?.id) {
+      saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
+    }
 
     let accountSaved = false;
     if (isSignedIn) {

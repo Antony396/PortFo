@@ -19,6 +19,7 @@ export type AnalysisFilingRow = {
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function getHeaders() {
 	return {
@@ -26,6 +27,31 @@ function getHeaders() {
 		Authorization: `Bearer ${supabaseServiceRoleKey}`,
 		'Content-Type': 'application/json',
 	};
+}
+
+function wait(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3) {
+	for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+		try {
+			const response = await fetch(url, init);
+			const shouldRetry = RETRYABLE_STATUS_CODES.has(response.status) && attempt < maxAttempts - 1;
+			if (!shouldRetry) {
+				return response;
+			}
+		} catch (error) {
+			if (attempt >= maxAttempts - 1) {
+				throw error;
+			}
+		}
+
+		const delayMs = Math.min(250 * 2 ** attempt, 1000);
+		await wait(delayMs);
+	}
+
+	throw new Error('Failed to complete Supabase request after retries');
 }
 
 export function isDatabaseConfigured() {
@@ -38,7 +64,7 @@ export async function getPortfolioByUserId(userId: string): Promise<PortfolioRec
 	}
 
 	const query = `${supabaseUrl}/rest/v1/portfolios?user_id=eq.${encodeURIComponent(userId)}&select=*&limit=1`;
-	const response = await fetch(query, {
+	const response = await fetchWithRetry(query, {
 		method: 'GET',
 		headers: getHeaders(),
 		cache: 'no-store',
@@ -72,7 +98,7 @@ export async function upsertPortfolioByUserId(userId: string, holdings: Portfoli
 	}
 
 	const postPayload = async (payload: Record<string, unknown>) => {
-		return fetch(`${supabaseUrl}/rest/v1/portfolios?on_conflict=user_id`, {
+		return fetchWithRetry(`${supabaseUrl}/rest/v1/portfolios?on_conflict=user_id`, {
 			method: 'POST',
 			headers: {
 				...getHeaders(),
@@ -117,7 +143,7 @@ export async function getAnalysisFilingsByUserId(userId: string): Promise<Analys
 	}
 
 	const query = `${supabaseUrl}/rest/v1/analysis_filings?user_id=eq.${encodeURIComponent(userId)}&select=symbol,company_name,created_at,updated_at&order=updated_at.desc`;
-	const response = await fetch(query, {
+	const response = await fetchWithRetry(query, {
 		method: 'GET',
 		headers: getHeaders(),
 		cache: 'no-store',
@@ -142,7 +168,7 @@ export async function getAnalysisFilingByUserIdAndSymbol(userId: string, symbol:
 
 	const normalizedSymbol = symbol.trim().toUpperCase();
 	const query = `${supabaseUrl}/rest/v1/analysis_filings?user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(normalizedSymbol)}&select=symbol,company_name,created_at,updated_at,draft&limit=1`;
-	const response = await fetch(query, {
+	const response = await fetchWithRetry(query, {
 		method: 'GET',
 		headers: getHeaders(),
 		cache: 'no-store',
@@ -191,7 +217,7 @@ export async function upsertAnalysisFilingByUserId(
 		payload.draft = params.draft;
 	}
 
-	const response = await fetch(`${supabaseUrl}/rest/v1/analysis_filings?on_conflict=user_id,symbol`, {
+	const response = await fetchWithRetry(`${supabaseUrl}/rest/v1/analysis_filings?on_conflict=user_id,symbol`, {
 		method: 'POST',
 		headers: {
 			...getHeaders(),
@@ -218,7 +244,7 @@ export async function deleteAnalysisFilingByUserIdAndSymbol(userId: string, symb
 	}
 
 	const normalizedSymbol = symbol.trim().toUpperCase();
-	const response = await fetch(
+	const response = await fetchWithRetry(
 		`${supabaseUrl}/rest/v1/analysis_filings?user_id=eq.${encodeURIComponent(userId)}&symbol=eq.${encodeURIComponent(normalizedSymbol)}`,
 		{
 			method: 'DELETE',

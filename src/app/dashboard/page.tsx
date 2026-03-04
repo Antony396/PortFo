@@ -9,6 +9,18 @@ import { SignInButton, SignOutButton, SignedIn, SignedOut, useUser } from "@cler
 export default function DashboardPage() {
   const { user, isSignedIn, isLoaded } = useUser();
 
+  type PortfolioHolding = {
+    symbol: string;
+    quantity: number;
+    avgPrice: number;
+  };
+
+  type PortfolioRecoverySnapshot = {
+    holdings: PortfolioHolding[];
+    portfolioName: string;
+    updatedAt: string;
+  };
+
   type SidebarRow = {
     symbol: string;
     value: number;
@@ -31,6 +43,7 @@ export default function DashboardPage() {
 
   const DEFAULT_PORTFOLIO_NAME = 'Example Portfolio';
   const PORTFOLIO_NAME_KEY = 'my_portfolio_name';
+  const ACCOUNT_PORTFOLIO_BACKUP_PREFIX = 'portfo_account_portfolio_backup_v1_';
 
   // 1. Core Portfolio State
   const [stocks, setStocks] = useState(defaultExamplePortfolio);
@@ -47,6 +60,7 @@ export default function DashboardPage() {
   const [editBackup, setEditBackup] = useState<any[]>([]);
   const [portfolioName, setPortfolioName] = useState(DEFAULT_PORTFOLIO_NAME);
   const [editNameBackup, setEditNameBackup] = useState(DEFAULT_PORTFOLIO_NAME);
+  const [hasInitializedPortfolio, setHasInitializedPortfolio] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [chartData, setChartData] = useState<{symbol:string;value:number}[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -69,6 +83,88 @@ export default function DashboardPage() {
   const desktopDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const previousAuthStateRef = useRef<boolean | null>(null);
+
+  const getAccountPortfolioBackupKey = (userId: string) => `${ACCOUNT_PORTFOLIO_BACKUP_PREFIX}${userId}`;
+
+  const normalizePortfolioHoldings = (value: unknown): PortfolioHolding[] => {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .filter((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const stock = item as Partial<PortfolioHolding>;
+        return (
+          typeof stock.symbol === 'string' &&
+          stock.symbol.trim().length > 0 &&
+          typeof stock.quantity === 'number' &&
+          Number.isFinite(stock.quantity) &&
+          typeof stock.avgPrice === 'number' &&
+          Number.isFinite(stock.avgPrice)
+        );
+      })
+      .map((item) => {
+        const stock = item as PortfolioHolding;
+        return {
+          symbol: stock.symbol.trim().toUpperCase(),
+          quantity: stock.quantity,
+          avgPrice: stock.avgPrice,
+        };
+      });
+  };
+
+  const saveAccountPortfolioBackup = (userId: string, holdings: PortfolioHolding[], portfolioNameValue: string) => {
+    try {
+      const safeName = portfolioNameValue.trim() || DEFAULT_PORTFOLIO_NAME;
+      const normalizedHoldings = normalizePortfolioHoldings(holdings);
+      const key = getAccountPortfolioBackupKey(userId);
+
+      const incomingLooksEmpty = normalizedHoldings.length === 0 && safeName === DEFAULT_PORTFOLIO_NAME;
+      if (incomingLooksEmpty) {
+        const existingRaw = localStorage.getItem(key);
+        if (existingRaw) {
+          const existingParsed = JSON.parse(existingRaw) as Partial<PortfolioRecoverySnapshot>;
+          const existingHoldings = normalizePortfolioHoldings(existingParsed.holdings);
+          const existingName = typeof existingParsed.portfolioName === 'string' ? existingParsed.portfolioName.trim() : '';
+          const existingHasMeaningfulData = existingHoldings.length > 0 || existingName.length > 0;
+          if (existingHasMeaningfulData) {
+            return;
+          }
+        }
+      }
+
+      const payload: PortfolioRecoverySnapshot = {
+        holdings: normalizedHoldings,
+        portfolioName: safeName,
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch (error) {
+      console.error('Failed to save account portfolio backup', error);
+    }
+  };
+
+  const loadAccountPortfolioBackup = (userId: string): PortfolioRecoverySnapshot | null => {
+    try {
+      const raw = localStorage.getItem(getAccountPortfolioBackupKey(userId));
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as Partial<PortfolioRecoverySnapshot>;
+      const holdings = normalizePortfolioHoldings(parsed.holdings);
+      const portfolioNameValue = typeof parsed.portfolioName === 'string' && parsed.portfolioName.trim()
+        ? parsed.portfolioName.trim()
+        : DEFAULT_PORTFOLIO_NAME;
+
+      return {
+        holdings,
+        portfolioName: portfolioNameValue,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
+      };
+    } catch (error) {
+      console.error('Failed to load account portfolio backup', error);
+      return null;
+    }
+  };
 
   const getActiveDropdownAnchor = () => {
     if (typeof window === 'undefined') return desktopDropdownRef.current || mobileDropdownRef.current;
@@ -86,14 +182,24 @@ export default function DashboardPage() {
   };
 
   // --- PERSISTENCE LOGIC ---
-  const loadLocalPortfolio = () => {
+  const loadLocalPortfolio = (useExampleIfMissing = false) => {
     const saved = localStorage.getItem('my_portfolio');
-    if (!saved) return;
+    if (!saved) {
+      if (useExampleIfMissing) {
+        setStocks(defaultExamplePortfolio);
+      } else {
+        setStocks([]);
+      }
+      return false;
+    }
 
     try {
       setStocks(JSON.parse(saved));
+      return true;
     } catch (error) {
       console.error('Failed to load local portfolio:', error);
+      setStocks(useExampleIfMissing ? defaultExamplePortfolio : []);
+      return false;
     }
   };
 
@@ -114,55 +220,148 @@ export default function DashboardPage() {
     if (!isLoaded) return;
 
     const loadPortfolio = async () => {
-      if (!isSignedIn) {
-        loadLocalPortfolio();
-        loadLocalPortfolioName();
-        return;
-      }
+      const signedInUserId = typeof user?.id === 'string' ? user.id : '';
+
+      const restoreFromAccountBackup = () => {
+        if (!signedInUserId) return false;
+        const backup = loadAccountPortfolioBackup(signedInUserId);
+        if (!backup) return false;
+
+        setStocks(backup.holdings);
+        setPortfolioName(backup.portfolioName);
+        setEditNameBackup(backup.portfolioName);
+        setSaveStatus('Recovered From Account Backup');
+        setTimeout(() => setSaveStatus('Save Portfolio'), 2000);
+        return true;
+      };
 
       try {
+        if (!isSignedIn) {
+          loadLocalPortfolio(true);
+          loadLocalPortfolioName();
+          return;
+        }
+
         const response = await fetch('/api/portfolio', { cache: 'no-store' });
 
         if (!response.ok) {
-          loadLocalPortfolio();
+          if (restoreFromAccountBackup()) {
+            return;
+          }
+          loadLocalPortfolio(false);
           loadLocalPortfolioName();
           return;
         }
 
         const data = await response.json();
-        if (typeof data?.portfolioName === 'string' && data.portfolioName.trim()) {
-          const trimmedName = data.portfolioName.trim();
-          setPortfolioName(trimmedName);
-          setEditNameBackup(trimmedName);
-        } else {
-          loadLocalPortfolioName();
-        }
+        const accountPortfolioName = typeof data?.portfolioName === 'string' && data.portfolioName.trim()
+          ? data.portfolioName.trim()
+          : DEFAULT_PORTFOLIO_NAME;
+        setPortfolioName(accountPortfolioName);
+        setEditNameBackup(accountPortfolioName);
 
-        if (Array.isArray(data?.holdings) && data.holdings.length > 0) {
-          setStocks(data.holdings);
+        if (Array.isArray(data?.holdings)) {
+          const normalized = normalizePortfolioHoldings(data.holdings);
+          setStocks(normalized);
+          if (signedInUserId) {
+            saveAccountPortfolioBackup(signedInUserId, normalized, accountPortfolioName);
+          }
           return;
         }
 
-        loadLocalPortfolio();
+        if (restoreFromAccountBackup()) {
+          return;
+        }
+
+        loadLocalPortfolio(false);
       } catch (error) {
         console.error('Failed to load account portfolio:', error);
-        loadLocalPortfolio();
+        if (restoreFromAccountBackup()) {
+          return;
+        }
+        loadLocalPortfolio(false);
         loadLocalPortfolioName();
+      } finally {
+        setHasInitializedPortfolio(true);
       }
     };
 
     loadPortfolio();
-  }, [isLoaded, isSignedIn]);
-
-  useEffect(() => {
-    localStorage.setItem('my_portfolio', JSON.stringify(stocks));
-  }, [stocks]);
+  }, [isLoaded, isSignedIn, user?.id]);
 
   useEffect(() => {
     if (!isLoaded) return;
+
+    const wasSignedIn = previousAuthStateRef.current;
+
+    if (wasSignedIn && !isSignedIn) {
+      try {
+        localStorage.removeItem('my_portfolio');
+        localStorage.removeItem(PORTFOLIO_NAME_KEY);
+
+        const filingsKey = 'portfo_stock_analysis_filings_v1';
+        const draftPrefix = 'portfo_stock_analysis_draft_v1_';
+        const rawFilings = localStorage.getItem(filingsKey);
+
+        if (rawFilings) {
+          const parsed = JSON.parse(rawFilings) as Array<{ symbol?: string }>;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((item) => {
+              if (typeof item?.symbol === 'string' && item.symbol.trim()) {
+                localStorage.removeItem(`${draftPrefix}${item.symbol.trim().toUpperCase()}`);
+              }
+            });
+          }
+        }
+
+        const draftKeysToDelete: string[] = [];
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index);
+          if (key && key.startsWith(draftPrefix)) {
+            draftKeysToDelete.push(key);
+          }
+        }
+        draftKeysToDelete.forEach((key) => localStorage.removeItem(key));
+        localStorage.removeItem(filingsKey);
+      } catch (error) {
+        console.error('Failed to clear account-specific local data on logout', error);
+      }
+
+      setStocks(defaultExamplePortfolio);
+      setPortfolioName(DEFAULT_PORTFOLIO_NAME);
+      setEditNameBackup(DEFAULT_PORTFOLIO_NAME);
+      setIsEditing(false);
+      setEditBackup([]);
+      setShowDropdown(false);
+      setShowMobileFullFields(false);
+      setSuggestions([]);
+      setNewSymbol('');
+      setNewQuantity('');
+      setNewBuyPrice('');
+      setAddStatus('');
+      setSaveStatus('Save Portfolio');
+      setHasInitializedPortfolio(true);
+    }
+
+    previousAuthStateRef.current = isSignedIn;
+  }, [isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!hasInitializedPortfolio) return;
+    localStorage.setItem('my_portfolio', JSON.stringify(stocks));
+  }, [stocks, hasInitializedPortfolio]);
+
+  useEffect(() => {
+    if (!isLoaded || !hasInitializedPortfolio) return;
     const finalName = portfolioName.trim() || DEFAULT_PORTFOLIO_NAME;
     localStorage.setItem(PORTFOLIO_NAME_KEY, finalName);
-  }, [portfolioName, isLoaded]);
+  }, [portfolioName, isLoaded, hasInitializedPortfolio]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !hasInitializedPortfolio || !user?.id) return;
+    const finalName = portfolioName.trim() || DEFAULT_PORTFOLIO_NAME;
+    saveAccountPortfolioBackup(user.id, normalizePortfolioHoldings(stocks), finalName);
+  }, [isLoaded, isSignedIn, hasInitializedPortfolio, user?.id, stocks, portfolioName]);
 
   const manualSave = async () => {
     setSaveStatus('Saving...');
@@ -170,6 +369,10 @@ export default function DashboardPage() {
     const finalPortfolioName = portfolioName.trim() || DEFAULT_PORTFOLIO_NAME;
     setPortfolioName(finalPortfolioName);
     setEditNameBackup(finalPortfolioName);
+
+    if (isSignedIn && user?.id) {
+      saveAccountPortfolioBackup(user.id, normalizePortfolioHoldings(stocks), finalPortfolioName);
+    }
 
     let accountSaved = false;
     if (isSignedIn) {
