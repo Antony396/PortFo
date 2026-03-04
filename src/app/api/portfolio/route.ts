@@ -28,12 +28,16 @@ export async function GET() {
   }
 
   if (!isDatabaseConfigured()) {
-    return NextResponse.json({ holdings: [], storage: 'local-only' }, { status: 200 });
+    return NextResponse.json({ holdings: [], portfolioName: '', storage: 'local-only' }, { status: 200 });
   }
 
   try {
-    const holdings = await getPortfolioByUserId(userId);
-    return NextResponse.json({ holdings: holdings || [], storage: 'database' });
+    const portfolio = await getPortfolioByUserId(userId);
+    return NextResponse.json({
+      holdings: portfolio?.holdings || [],
+      portfolioName: portfolio?.portfolioName || '',
+      storage: 'database',
+    });
   } catch (error) {
     console.error('Portfolio GET error:', error);
     return NextResponse.json({ error: 'Failed to load portfolio' }, { status: 500 });
@@ -54,12 +58,14 @@ export async function PUT(request: Request) {
   try {
     const body = await request.json();
     const holdings = body?.holdings;
+    const rawPortfolioName = typeof body?.portfolioName === 'string' ? body.portfolioName.trim() : '';
+    const portfolioName = rawPortfolioName.slice(0, 60);
 
     if (!Array.isArray(holdings) || !holdings.every(isValidHolding)) {
       return NextResponse.json({ error: 'Invalid holdings payload' }, { status: 400 });
     }
 
-    await upsertPortfolioByUserId(userId, holdings);
+    await upsertPortfolioByUserId(userId, holdings, portfolioName || undefined);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Portfolio PUT error:', error);

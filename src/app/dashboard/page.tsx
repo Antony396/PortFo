@@ -29,6 +29,9 @@ export default function DashboardPage() {
     { symbol: 'TSLA', quantity: 1, avgPrice: 100 },
   ];
 
+  const DEFAULT_PORTFOLIO_NAME = 'Example Portfolio';
+  const PORTFOLIO_NAME_KEY = 'my_portfolio_name';
+
   // 1. Core Portfolio State
   const [stocks, setStocks] = useState(defaultExamplePortfolio);
 
@@ -42,11 +45,14 @@ export default function DashboardPage() {
   const [saveStatus, setSaveStatus] = useState('Save Portfolio');
   const [isEditing, setIsEditing] = useState(false);
   const [editBackup, setEditBackup] = useState<any[]>([]);
+  const [portfolioName, setPortfolioName] = useState(DEFAULT_PORTFOLIO_NAME);
+  const [editNameBackup, setEditNameBackup] = useState(DEFAULT_PORTFOLIO_NAME);
   const [showChart, setShowChart] = useState(false);
   const [chartData, setChartData] = useState<{symbol:string;value:number}[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [showAiHelper, setShowAiHelper] = useState(true);
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const [showMobileFullFields, setShowMobileFullFields] = useState(false);
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [sidebarRows, setSidebarRows] = useState<SidebarRow[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -59,6 +65,7 @@ export default function DashboardPage() {
     },
   ]);
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileFullFieldsScrollRef = useRef<HTMLDivElement>(null);
   const desktopDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -68,6 +75,14 @@ export default function DashboardPage() {
     return window.matchMedia('(min-width: 1024px)').matches
       ? desktopDropdownRef.current
       : mobileDropdownRef.current;
+  };
+
+  const scrollMobileFullFields = (direction: 'left' | 'right') => {
+    const container = mobileFullFieldsScrollRef.current;
+    if (!container) return;
+
+    const amount = direction === 'right' ? 240 : -240;
+    container.scrollBy({ left: amount, behavior: 'smooth' });
   };
 
   // --- PERSISTENCE LOGIC ---
@@ -82,12 +97,26 @@ export default function DashboardPage() {
     }
   };
 
+  const loadLocalPortfolioName = () => {
+    const savedName = localStorage.getItem(PORTFOLIO_NAME_KEY);
+    if (savedName && savedName.trim()) {
+      const trimmedName = savedName.trim();
+      setPortfolioName(trimmedName);
+      setEditNameBackup(trimmedName);
+      return;
+    }
+
+    setPortfolioName(DEFAULT_PORTFOLIO_NAME);
+    setEditNameBackup(DEFAULT_PORTFOLIO_NAME);
+  };
+
   useEffect(() => {
     if (!isLoaded) return;
 
     const loadPortfolio = async () => {
       if (!isSignedIn) {
         loadLocalPortfolio();
+        loadLocalPortfolioName();
         return;
       }
 
@@ -96,10 +125,19 @@ export default function DashboardPage() {
 
         if (!response.ok) {
           loadLocalPortfolio();
+          loadLocalPortfolioName();
           return;
         }
 
         const data = await response.json();
+        if (typeof data?.portfolioName === 'string' && data.portfolioName.trim()) {
+          const trimmedName = data.portfolioName.trim();
+          setPortfolioName(trimmedName);
+          setEditNameBackup(trimmedName);
+        } else {
+          loadLocalPortfolioName();
+        }
+
         if (Array.isArray(data?.holdings) && data.holdings.length > 0) {
           setStocks(data.holdings);
           return;
@@ -109,6 +147,7 @@ export default function DashboardPage() {
       } catch (error) {
         console.error('Failed to load account portfolio:', error);
         loadLocalPortfolio();
+        loadLocalPortfolioName();
       }
     };
 
@@ -119,8 +158,18 @@ export default function DashboardPage() {
     localStorage.setItem('my_portfolio', JSON.stringify(stocks));
   }, [stocks]);
 
+  useEffect(() => {
+    if (!isLoaded) return;
+    const finalName = portfolioName.trim() || DEFAULT_PORTFOLIO_NAME;
+    localStorage.setItem(PORTFOLIO_NAME_KEY, finalName);
+  }, [portfolioName, isLoaded]);
+
   const manualSave = async () => {
     setSaveStatus('Saving...');
+
+    const finalPortfolioName = portfolioName.trim() || DEFAULT_PORTFOLIO_NAME;
+    setPortfolioName(finalPortfolioName);
+    setEditNameBackup(finalPortfolioName);
 
     let accountSaved = false;
     if (isSignedIn) {
@@ -128,7 +177,7 @@ export default function DashboardPage() {
         const response = await fetch('/api/portfolio', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ holdings: stocks }),
+          body: JSON.stringify({ holdings: stocks, portfolioName: finalPortfolioName }),
         });
 
         accountSaved = response.ok;
@@ -138,6 +187,7 @@ export default function DashboardPage() {
     }
 
     localStorage.setItem('my_portfolio', JSON.stringify(stocks));
+    localStorage.setItem(PORTFOLIO_NAME_KEY, finalPortfolioName);
     setSaveStatus(
       isSignedIn
         ? accountSaved
@@ -154,6 +204,7 @@ export default function DashboardPage() {
     if (isEditing) {
       // Cancel - restore from backup
       setStocks(editBackup);
+      setPortfolioName(editNameBackup);
       setIsEditing(false);
       setEditBackup([]);
       setNewSymbol('');
@@ -165,6 +216,7 @@ export default function DashboardPage() {
     } else {
       // Enter edit mode - save backup
       setEditBackup(JSON.parse(JSON.stringify(stocks)));
+      setEditNameBackup(portfolioName.trim() || DEFAULT_PORTFOLIO_NAME);
       setIsEditing(true);
     }
   };
@@ -400,6 +452,8 @@ export default function DashboardPage() {
     user?.primaryEmailAddress?.emailAddress ||
     'Signed in';
 
+  const displayPortfolioName = portfolioName.trim() || DEFAULT_PORTFOLIO_NAME;
+
   const sendChatMessage = async () => {
     const message = chatInput.trim();
     if (!message || chatLoading) return;
@@ -531,13 +585,13 @@ export default function DashboardPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-8 md:py-12 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-4 md:py-6 lg:py-4 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
       <div className="hidden lg:block fixed inset-y-0 left-0 w-[220px] bg-white/5 border-r border-white/10 backdrop-blur-sm pointer-events-none" />
       <div className="hidden lg:block fixed inset-y-0 right-0 w-[340px] bg-white/5 border-l border-white/10 backdrop-blur-sm pointer-events-none" />
       <div className="w-full relative z-10">
         
         {/* HEADER SECTION */}
-        <div className="px-2 md:px-10 mb-8">
+        <div className="px-2 md:px-10 mb-4 md:mb-4 lg:mb-3">
           <div>
             <h2 className="text-3xl font-black tracking-tight flex items-center gap-2">
               PortFo
@@ -612,6 +666,21 @@ export default function DashboardPage() {
             ) : (
               <div className="mt-3 space-y-3">
                 <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Name</p>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={portfolioName}
+                      onChange={(event) => setPortfolioName(event.target.value.slice(0, 60))}
+                      placeholder={DEFAULT_PORTFOLIO_NAME}
+                      className="w-[170px] px-2 py-1 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-[11px] font-semibold text-right focus:outline-none"
+                    />
+                  ) : (
+                    <p className="text-sm font-semibold text-white truncate max-w-[160px] text-right">{displayPortfolioName}</p>
+                  )}
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="flex items-center justify-between">
                   <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Value</p>
                   <p className="text-sm font-semibold text-white">${totalValue.toFixed(2)}</p>
                 </div>
@@ -631,61 +700,137 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="overflow-visible relative z-30">
-            <div className="bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible min-w-full">
-              <div className="grid grid-cols-12 px-4 pt-4 pb-3 text-[9px] font-semibold text-blue-200/80 uppercase tracking-[0.06em]">
-                <span className="col-span-2">Asset</span>
-                <span className="col-span-2 text-center">Avg Buy Price</span>
-                <span className="col-span-1 text-center">Qty</span>
-                <span className="col-span-2 text-right">Market Price</span>
-                <span className="col-span-2 text-center">24h</span>
-                <span className="col-span-1 text-right">Value</span>
-                <span className="col-span-2 text-right">Profit/Loss</span>
-              </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => setShowMobileFullFields((prev) => !prev)}
+                className="px-3 py-2 bg-white/10 border border-white/15 rounded-xl text-[11px] font-semibold text-blue-100 hover:bg-white/15 transition-all"
+              >
+                {showMobileFullFields ? 'Hide Full Fields' : 'Show Full Fields (Scrollable)'}
+              </button>
 
-              <div className="divide-y divide-white/10">
-                {stocks.map((stock) => (
-                  <div key={`mobile-row-${stock.symbol}`} className="px-4 py-4 hover:bg-white/5 transition-all group relative">
-                    {isEditing && (
-                      <button
-                        onClick={() => removeStock(stock.symbol)}
-                        className="absolute left-1 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-[10px] p-1"
-                      >
-                        ✕
-                      </button>
-                    )}
+              {showMobileFullFields && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => scrollMobileFullFields('left')}
+                    className="h-7 min-w-7 px-2 rounded-md border border-white/20 bg-white/10 text-[11px] font-semibold text-blue-100 hover:bg-white/15 transition-all"
+                    aria-label="Scroll full fields left"
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={() => scrollMobileFullFields('right')}
+                    className="h-7 min-w-7 px-2 rounded-md border border-white/20 bg-white/10 text-[11px] font-semibold text-blue-100 hover:bg-white/15 transition-all"
+                    aria-label="Scroll full fields right"
+                  >
+                    →
+                  </button>
+                </div>
+              )}
+            </div>
 
-                    <PriceDisplay symbol={stock.symbol} avgPrice={stock.avgPrice} quantity={stock.quantity} compact>
-                      <div className="grid grid-cols-3 items-center justify-center gap-1">
-                        {isEditing ? (
-                          <div className="relative w-full col-span-2">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-[10px]">$</span>
-                            <input
-                              type="number"
-                              value={stock.avgPrice || ''}
-                              onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                              className="w-full pl-5 pr-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-slate-100 font-bold col-span-2 text-center text-[11px]">${stock.avgPrice.toFixed(2)}</span>
-                        )}
-
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            placeholder="Qty"
-                            value={stock.quantity || ''}
-                            onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                            className="w-full px-1 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-[11px] col-span-1"
-                          />
-                        ) : (
-                          <span className="text-slate-100 font-bold col-span-1 text-center text-[11px]">{stock.quantity}</span>
-                        )}
-                      </div>
-                    </PriceDisplay>
+            <div
+              ref={showMobileFullFields ? mobileFullFieldsScrollRef : undefined}
+              className={`mt-3 ${showMobileFullFields ? 'overflow-x-auto overflow-y-visible' : 'overflow-visible'} relative z-30`}
+            >
+              <div className={`bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-visible ${showMobileFullFields ? 'min-w-[980px]' : 'min-w-full'}`}>
+                {showMobileFullFields ? (
+                  <div className="grid grid-cols-12 px-4 py-3 text-[9px] font-semibold text-blue-200/80 uppercase tracking-[0.06em]">
+                    <span className="col-span-2">Asset</span>
+                    <span className="col-span-2 text-center">Avg Buy Price</span>
+                    <span className="col-span-1 text-center">Qty</span>
+                    <span className="col-span-2 text-right">Market Price</span>
+                    <span className="col-span-2 text-center">24h</span>
+                    <span className="col-span-1 text-right">Value</span>
+                    <span className="col-span-2 text-right">Profit/Loss</span>
                   </div>
-                ))}
+                ) : (
+                  <div className="grid grid-cols-12 px-4 pt-4 pb-3 text-[10px] font-semibold text-blue-200/80 uppercase tracking-[0.06em]">
+                    <span className="col-span-5">Asset</span>
+                    <span className="col-span-3 text-right">Total Equity</span>
+                    <span className="col-span-4 text-right">P/L</span>
+                  </div>
+                )}
+
+                <div className="divide-y divide-white/10">
+                  {stocks.map((stock) =>
+                    showMobileFullFields ? (
+                      <div key={`mobile-full-row-${stock.symbol}`} className="px-4 py-3 hover:bg-white/5 transition-all group relative">
+                        {isEditing && (
+                          <button
+                            onClick={() => removeStock(stock.symbol)}
+                            className="absolute left-1 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-[10px] p-1"
+                          >
+                            ✕
+                          </button>
+                        )}
+
+                        <PriceDisplay symbol={stock.symbol} avgPrice={stock.avgPrice} quantity={stock.quantity} compact>
+                          <div className="grid grid-cols-3 items-center justify-center gap-1">
+                            {isEditing ? (
+                              <div className="relative w-full col-span-2">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-[10px]">$</span>
+                                <input
+                                  type="number"
+                                  value={stock.avgPrice || ''}
+                                  onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
+                                  className="w-full pl-5 pr-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
+                                  placeholder="Avg"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-slate-100 font-bold col-span-2 text-center text-[11px]">${stock.avgPrice.toFixed(2)}</span>
+                            )}
+
+                            {isEditing ? (
+                              <input
+                                type="number"
+                                placeholder="Qty"
+                                value={stock.quantity || ''}
+                                onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
+                                className="w-full px-1 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-[11px] col-span-1"
+                              />
+                            ) : (
+                              <span className="text-slate-100 font-bold col-span-1 text-center text-[11px]">{stock.quantity}</span>
+                            )}
+                          </div>
+                        </PriceDisplay>
+                      </div>
+                    ) : (
+                      <div key={`mobile-row-${stock.symbol}`} className="px-4 py-4 hover:bg-white/5 transition-all group">
+                        <PriceDisplay symbol={stock.symbol} avgPrice={stock.avgPrice} quantity={stock.quantity} mobileSummary>
+                          {isEditing ? (
+                            <div className="grid grid-cols-12 gap-2">
+                              <div className="col-span-5 relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-[10px]">$</span>
+                                <input
+                                  type="number"
+                                  value={stock.avgPrice || ''}
+                                  onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
+                                  className="w-full pl-5 pr-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
+                                  placeholder="Avg"
+                                />
+                              </div>
+                              <input
+                                type="number"
+                                placeholder="Qty"
+                                value={stock.quantity || ''}
+                                onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
+                                className="col-span-3 w-full px-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
+                              />
+                              <button
+                                onClick={() => removeStock(stock.symbol)}
+                                className="col-span-4 px-2 py-1.5 rounded-lg border border-rose-300/30 bg-rose-500/10 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-all"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : null}
+                        </PriceDisplay>
+                      </div>
+                    ),
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -837,10 +982,19 @@ export default function DashboardPage() {
           </aside>
 
           <div className="min-w-0">
-            <div className="mb-5 px-1 flex justify-center">
-              <p className="text-sm font-semibold tracking-[0.02em] text-blue-100 text-center">
-                Create, Merge, and Track Your Holdings
-              </p>
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.08em] mb-2">Portfolio Name</p>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={portfolioName}
+                  onChange={(event) => setPortfolioName(event.target.value.slice(0, 60))}
+                  placeholder={DEFAULT_PORTFOLIO_NAME}
+                  className="w-full max-w-[420px] px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl text-sm font-semibold focus:outline-none"
+                />
+              ) : (
+                <p className="text-lg font-semibold text-white">{displayPortfolioName}</p>
+              )}
             </div>
 
             <div className="overflow-x-auto overflow-y-visible relative z-30">
@@ -1009,6 +1163,13 @@ export default function DashboardPage() {
                   <p className="mt-3 text-sm font-medium text-blue-100">Loading…</p>
                 ) : (
                   <div className="mt-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Name</p>
+                      <p className="text-sm font-semibold text-white truncate max-w-[160px] text-right">{displayPortfolioName}</p>
+                    </div>
+
+                    <div className="h-px bg-white/10" />
+
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Value</p>
                       <p className="text-sm font-semibold text-white">${totalValue.toFixed(2)}</p>

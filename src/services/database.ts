@@ -4,6 +4,11 @@ export type PortfolioStock = {
 	avgPrice: number;
 };
 
+export type PortfolioRecord = {
+	holdings: PortfolioStock[];
+	portfolioName: string;
+};
+
 export type AnalysisFilingRow = {
 	symbol: string;
 	company_name: string;
@@ -27,12 +32,12 @@ export function isDatabaseConfigured() {
 	return Boolean(supabaseUrl && supabaseServiceRoleKey);
 }
 
-export async function getPortfolioByUserId(userId: string): Promise<PortfolioStock[] | null> {
+export async function getPortfolioByUserId(userId: string): Promise<PortfolioRecord | null> {
 	if (!isDatabaseConfigured()) {
 		return null;
 	}
 
-	const query = `${supabaseUrl}/rest/v1/portfolios?user_id=eq.${encodeURIComponent(userId)}&select=holdings&limit=1`;
+	const query = `${supabaseUrl}/rest/v1/portfolios?user_id=eq.${encodeURIComponent(userId)}&select=*&limit=1`;
 	const response = await fetch(query, {
 		method: 'GET',
 		headers: getHeaders(),
@@ -45,31 +50,59 @@ export async function getPortfolioByUserId(userId: string): Promise<PortfolioSto
 
 	const rows = await response.json();
 	if (!Array.isArray(rows) || rows.length === 0) {
-		return [];
+		return {
+			holdings: [],
+			portfolioName: '',
+		};
 	}
 
-	const holdings = rows[0]?.holdings;
-	return Array.isArray(holdings) ? holdings : [];
+	const row = rows[0] as { holdings?: unknown; portfolio_name?: unknown };
+	const holdings = Array.isArray(row?.holdings) ? row.holdings as PortfolioStock[] : [];
+	const portfolioName = typeof row?.portfolio_name === 'string' ? row.portfolio_name : '';
+
+	return {
+		holdings,
+		portfolioName,
+	};
 }
 
-export async function upsertPortfolioByUserId(userId: string, holdings: PortfolioStock[]) {
+export async function upsertPortfolioByUserId(userId: string, holdings: PortfolioStock[], portfolioName?: string) {
 	if (!isDatabaseConfigured()) {
 		return false;
 	}
 
-	const response = await fetch(`${supabaseUrl}/rest/v1/portfolios?on_conflict=user_id`, {
-		method: 'POST',
-		headers: {
-			...getHeaders(),
-			Prefer: 'resolution=merge-duplicates,return=minimal',
-		},
-		body: JSON.stringify([
-			{
-				user_id: userId,
-				holdings,
+	const postPayload = async (payload: Record<string, unknown>) => {
+		return fetch(`${supabaseUrl}/rest/v1/portfolios?on_conflict=user_id`, {
+			method: 'POST',
+			headers: {
+				...getHeaders(),
+				Prefer: 'resolution=merge-duplicates,return=minimal',
 			},
-		]),
-	});
+			body: JSON.stringify([payload]),
+		});
+	};
+
+	const basePayload: Record<string, unknown> = {
+		user_id: userId,
+		holdings,
+	};
+
+	const normalizedPortfolioName = typeof portfolioName === 'string' ? portfolioName.trim() : '';
+	let response = await postPayload(
+		normalizedPortfolioName
+			? {
+				...basePayload,
+				portfolio_name: normalizedPortfolioName,
+			}
+			: basePayload,
+	);
+
+	if (!response.ok && normalizedPortfolioName) {
+		const errorText = (await response.text()).toLowerCase();
+		if (errorText.includes('portfolio_name')) {
+			response = await postPayload(basePayload);
+		}
+	}
 
 	if (!response.ok) {
 		throw new Error('Failed to save portfolio to database');
