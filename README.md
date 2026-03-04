@@ -143,6 +143,10 @@ Saves a symbol's analysis draft (including optional published clean snapshot) to
 
 Signed-in saves with a published good copy sync to the public community review table only when that file's `Public Review` toggle is set to `On`.
 
+`PATCH /api/analysis/[symbol]`
+
+Updates only the file-level `Public Review` opt-in setting used by the toggle in the analysis filings actions row, without replacing the rest of the saved draft.
+
 `DELETE /api/analysis/[symbol]`
 
 Deletes a symbol filing (and its draft) from the signed-in user's account.

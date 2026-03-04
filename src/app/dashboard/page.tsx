@@ -788,7 +788,7 @@ export default function DashboardPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-4 md:py-6 lg:py-4 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-4 md:py-6 lg:py-4 px-3 md:pl-3 md:pr-5 font-sans text-slate-100 relative overflow-x-hidden">
       <div className="hidden lg:block fixed inset-y-0 left-0 w-[220px] bg-white/5 border-r border-white/10 backdrop-blur-sm pointer-events-none" />
       <div className="hidden lg:block fixed inset-y-0 right-0 w-[340px] bg-white/5 border-l border-white/10 backdrop-blur-sm pointer-events-none" />
       <div className="w-full relative z-10">

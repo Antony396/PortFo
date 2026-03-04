@@ -657,7 +657,7 @@ export default function AnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 py-12 px-4 font-sans text-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-900 py-12 px-4 font-sans text-slate-100">
       <div className="max-w-[1300px] mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
