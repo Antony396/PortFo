@@ -9,6 +9,21 @@ body {
 	margin: 0;
 	padding: 0;
 	background-color: rgb(2 6 23);
+	background-image:
+		radial-gradient(1200px 700px at 82% -8%, rgba(8, 145, 178, 0.18), transparent 55%),
+		radial-gradient(1000px 620px at 12% 108%, rgba(34, 211, 238, 0.12), transparent 60%),
+		linear-gradient(140deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.96)),
+		repeating-linear-gradient(122deg, rgba(34, 211, 238, 0.24) 0 1px, transparent 1px 260px),
+		repeating-linear-gradient(32deg, rgba(34, 211, 238, 0.18) 0 1px, transparent 1px 220px),
+		repeating-linear-gradient(170deg, rgba(34, 211, 238, 0.1) 0 1px, transparent 1px 320px);
+	background-size:
+		cover,
+		cover,
+		cover,
+		480px 480px,
+		420px 420px,
+		620px 620px;
+	background-blend-mode: screen, screen, normal, normal, normal, normal;
 }
 
 body {
