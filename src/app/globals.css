@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+:root {
+	color-scheme: dark;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background-color: rgb(2 6 23);
+}
+
+body {
+	min-height: 100dvh;
+}
+
 .bg-market-mesh {
 	background-color: rgb(2 6 23);
 	background-image:
