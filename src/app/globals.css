@@ -48,18 +48,6 @@ body {
 		margin-top: calc(var(--safari-vv-offset-top) * -1);
 		padding-top: var(--safari-vv-offset-top);
 	}
-
-	html.ios-safari-vv-fix body::after {
-		content: '';
-		position: fixed;
-		left: 0;
-		right: 0;
-		top: 0;
-		height: 3mm;
-		pointer-events: none;
-		z-index: 2147483647;
-		background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0) 100%);
-	}
 }
 
 .bg-market-mesh {
@@ -106,4 +94,17 @@ body {
 		420px 420px,
 		620px 620px;
 	background-blend-mode: screen, screen, normal, normal, normal, normal;
+}
+
+@media (max-width: 767px) {
+	.bg-market-mesh::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		height: 3mm;
+		pointer-events: none;
+		background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0) 100%);
+	}
 }
