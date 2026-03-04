@@ -933,28 +933,27 @@ export default function AnalysisSymbolPage() {
               <h1 className="text-4xl font-bold tracking-tight text-blue-50">{publishedFile.symbol}</h1>
               <p className="mt-2 text-lg text-blue-100/90">{publishedFile.companyName || analysisSymbol}</p>
 
-              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 text-[13px] text-blue-100/80">
+              <div className="mt-5 text-[13px] text-blue-100/80">
                 <p>
                   <span className="font-semibold text-blue-200">Published:</span>{' '}
                   {formatDateTime(publishedFile.publishedAt)}
                 </p>
-                <p>
-                  <span className="font-semibold text-blue-200">Most Likely:</span>{' '}
-                  {mostLikelyScenario?.label || 'Base'}
-                </p>
+                {/* Most Likely removed for minimal report style */}
                 <p>
                   <span className="font-semibold text-blue-200">Saved DCF:</span>{' '}
                   {publishedFile.savedDcfPrice !== null ? `$${formatCurrency(publishedFile.savedDcfPrice)}` : '—'}
                 </p>
               </div>
 
-              <div className="mt-6 rounded-xl border border-white/10 bg-slate-800/35 px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Company Fundamentals</p>
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-2 gap-2.5">
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-2">Company Fundamentals</p>
+                <ul className="list-none pl-0">
                   {fundamentalHighlights.map((item) => (
-                    <FundamentalPill key={`published-${item.label}`} label={item.label} value={item.value} />
+                    <li key={`published-${item.label}`} className="mb-1">
+                      <span className="font-semibold text-blue-200">{item.label}:</span> {item.value}
+                    </li>
                   ))}
-                </div>
+                </ul>
                 {!hasAnyFundamentalData && (
                   <p className="mt-2 text-[11px] text-blue-100/70">
                     Fundamentals are unavailable for this symbol right now.
@@ -962,34 +961,15 @@ export default function AnalysisSymbolPage() {
                 )}
               </div>
 
-              <div className="mt-6 rounded-xl border border-white/10 bg-slate-800/35 px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Scenario Metrics</p>
-                <p className="mt-2 text-[12px] text-blue-100/80">
-                  Projected growth for each of the cases (short-term rate over {dcfHorizonLabel} in the DCF model).
-                </p>
-                <p className="mt-1 text-[12px] text-amber-100/85">
-                  Disclaimer: Likelihoods are estimates provided by the publisher.
-                </p>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="mt-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-2">Scenario Metrics</p>
+                <ul className="list-none pl-0">
                   {scenarioTopMetrics.map(({ option, scenario, dcfValue: scenarioDcfValue }) => (
-                    <div key={option.key} className="rounded-lg border border-white/10 bg-slate-900/45 p-3">
-                      <p className="text-sm font-semibold text-blue-50">{option.label}</p>
-                      <p className="mt-2 text-[12px] text-blue-100/85">
-                        <span className="font-semibold text-blue-200">Projected Growth:</span>{' '}
-                        {formatGrowthRatePercent(scenario?.growthRate || '')}
-                      </p>
-                      <p className="mt-1 text-[12px] text-blue-100/85">
-                        <span className="font-semibold text-blue-200">Likelihood:</span>{' '}
-                        {formatLikelihood(scenario?.likelihood || '0')}
-                      </p>
-                      <p className="mt-1 text-[12px] text-blue-100/85">
-                        <span className="font-semibold text-blue-200">DCF / Share:</span>{' '}
-                        {scenarioDcfValue !== null ? `$${formatCurrency(scenarioDcfValue)}` : '—'}
-                      </p>
-                    </div>
+                    <li key={option.key} className="mb-1">
+                      <span className="font-semibold text-blue-200">{option.label}:</span> Projected Growth: {formatGrowthRatePercent(scenario?.growthRate || '')}, DCF / Share: {scenarioDcfValue !== null ? `$${formatCurrency(scenarioDcfValue)}` : '—'}
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             </header>
 
