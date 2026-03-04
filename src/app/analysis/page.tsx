@@ -66,6 +66,7 @@ export default function AnalysisPage() {
   const [symbolInput, setSymbolInput] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const filingsTableScrollRef = useRef<HTMLDivElement>(null);
   const previousAuthStateRef = useRef<boolean | null>(null);
@@ -298,9 +299,13 @@ export default function AnalysisPage() {
 
     if (!upperQuery.trim()) {
       setSuggestions([]);
+      setIsSearching(false);
       setShowDropdown(false);
       return;
     }
+
+    setShowDropdown(true);
+    setIsSearching(true);
 
     try {
       const response = await fetch(`/api/search?q=${encodeURIComponent(upperQuery)}`);
@@ -314,7 +319,9 @@ export default function AnalysisPage() {
     } catch (error) {
       console.error('Analysis filing search failed', error);
       setSuggestions([]);
-      setShowDropdown(false);
+      setShowDropdown(true);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -472,63 +479,70 @@ export default function AnalysisPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6 items-start">
-          <div className="relative z-30 xl:z-auto bg-white/5 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
-            <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-3">Add Stock To Table</p>
+        <div className="relative z-10 bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md overflow-visible">
+            <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-4">Your Analysis Files</p>
 
-            <div className="relative" ref={dropdownRef}>
-              <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
-                Symbol
-              </label>
-              <input
-                type="text"
-                value={symbolInput}
-                onChange={(event) => handleSearchChange(event.target.value)}
-                onFocus={() => setShowDropdown(suggestions.length > 0)}
-                className="w-full px-4 py-3 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
-                placeholder="AAPL"
-              />
+          <div className="relative z-40 mb-5 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-3">Add Stock To Table</p>
 
-              {showDropdown && suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden py-2">
-                  {suggestions.map((item) => (
-                    <button
-                      key={item.symbol}
-                      onClick={() => {
-                        setSymbolInput(item.symbol.toUpperCase());
-                        setShowDropdown(false);
-                      }}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
-                    >
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
-                        <span className="text-[9px] text-blue-200/70 font-semibold uppercase truncate max-w-[180px]">
-                          {item.description}
-                        </span>
-                      </div>
-                      <span className="text-blue-300 font-semibold text-[10px] uppercase">Use</span>
-                    </button>
-                  ))}
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="relative z-50" ref={dropdownRef}>
+                  <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
+                    Symbol
+                  </label>
+                  <input
+                    type="text"
+                    value={symbolInput}
+                    onChange={(event) => handleSearchChange(event.target.value)}
+                    onFocus={() => setShowDropdown(symbolInput.trim().length > 0)}
+                    className="w-full px-4 py-3 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
+                    placeholder="AAPL"
+                  />
+
+                  {showDropdown && symbolInput.trim().length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-[70] overflow-hidden py-2">
+                      {isSearching ? (
+                        <div className="px-4 py-3 text-[11px] font-semibold text-blue-100/85">Searching…</div>
+                      ) : suggestions.length > 0 ? (
+                        suggestions.map((item) => (
+                          <button
+                            key={item.symbol}
+                            onClick={() => {
+                              setSymbolInput(item.symbol.toUpperCase());
+                              setShowDropdown(false);
+                            }}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/10 last:border-0"
+                          >
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-semibold text-sm text-slate-100">{item.symbol}</span>
+                              <span className="text-[9px] text-blue-200/70 font-semibold uppercase truncate max-w-[180px]">
+                                {item.description}
+                              </span>
+                            </div>
+                            <span className="text-blue-300 font-semibold text-[10px] uppercase">Use</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-4 py-3 text-[11px] font-semibold text-blue-100/75">No matches found</div>
+                      )}
+                    </div>
+                  )}
                 </div>
+
+                <button
+                  onClick={addStockToFilings}
+                  className="w-full sm:w-auto px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
+                >
+                  {isAdding ? 'Adding…' : 'Add To Filing Table'}
+                </button>
+              </div>
+
+              {status && (
+                <p className="mt-3 text-xs font-semibold text-blue-100/90 leading-relaxed">
+                  {status}
+                </p>
               )}
             </div>
-
-            <button
-              onClick={addStockToFilings}
-              className="mt-4 w-full px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all"
-            >
-              {isAdding ? 'Adding…' : 'Add To Filing Table'}
-            </button>
-
-            {status && (
-              <p className="mt-3 text-xs font-semibold text-blue-100/90 leading-relaxed">
-                {status}
-              </p>
-            )}
-          </div>
-
-          <div className="relative z-10 bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md overflow-hidden">
-            <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-4">Your Analysis Files</p>
 
             <div className="mb-3 flex items-center justify-between gap-2 md:hidden">
               <p className="text-[10px] text-blue-200/70 uppercase tracking-[0.1em]">Swipe to see all table columns</p>
@@ -550,7 +564,7 @@ export default function AnalysisPage() {
               </div>
             </div>
 
-            <div ref={filingsTableScrollRef} className="overflow-x-auto">
+            <div ref={filingsTableScrollRef} className="relative z-10 overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-blue-200/80 text-[11px] uppercase tracking-[0.08em]">
@@ -622,7 +636,6 @@ export default function AnalysisPage() {
               </table>
             </div>
           </div>
-        </div>
 
         {confirmDeleteSymbol && (
           <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center px-4">
