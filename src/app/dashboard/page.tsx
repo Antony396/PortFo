@@ -876,7 +876,7 @@ export default function DashboardPage() {
                       value={portfolioName}
                       onChange={(event) => setPortfolioName(event.target.value.slice(0, 60))}
                       placeholder={DEFAULT_PORTFOLIO_NAME}
-                      className="w-[170px] px-2 py-1 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-[11px] font-semibold text-right focus:outline-none"
+                      className="w-[170px] px-2 py-1 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-lg text-[11px] font-semibold text-right focus:outline-none"
                     />
                   ) : (
                     <p className="text-sm font-semibold text-white truncate max-w-[160px] text-right">{displayPortfolioName}</p>
@@ -962,7 +962,7 @@ export default function DashboardPage() {
                         {isEditing && (
                           <button
                             onClick={() => removeStock(stock.symbol)}
-                            className="absolute left-1 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-[10px] p-1"
+                            className="absolute left-1 top-1/2 -translate-y-1/2 text-amber-200 hover:text-amber-100 transition-all text-[10px] p-1"
                           >
                             ✕
                           </button>
@@ -972,12 +972,12 @@ export default function DashboardPage() {
                           <div className="grid grid-cols-3 items-center justify-center gap-1">
                             {isEditing ? (
                               <div className="relative w-full col-span-2">
-                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-[10px]">$</span>
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-amber-200/80 font-bold text-[10px]">$</span>
                                 <input
                                   type="number"
                                   value={stock.avgPrice || ''}
                                   onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                                  className="w-full pl-5 pr-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
+                                  className="w-full pl-5 pr-2 py-1.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-lg font-semibold focus:outline-none focus:bg-amber-500/15 transition-all text-[11px]"
                                   placeholder="Avg"
                                 />
                               </div>
@@ -991,7 +991,7 @@ export default function DashboardPage() {
                                 placeholder="Qty"
                                 value={stock.quantity || ''}
                                 onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                                className="w-full px-1 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-[11px] col-span-1"
+                                className="w-full px-1 py-1.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-lg font-semibold text-center focus:outline-none focus:bg-amber-500/15 transition-all text-[11px] col-span-1"
                               />
                             ) : (
                               <span className="text-slate-100 font-bold col-span-1 text-center text-[11px]">{stock.quantity}</span>
@@ -1005,12 +1005,12 @@ export default function DashboardPage() {
                           {isEditing ? (
                             <div className="grid grid-cols-12 gap-2">
                               <div className="col-span-5 relative">
-                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-[10px]">$</span>
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-amber-200/80 font-bold text-[10px]">$</span>
                                 <input
                                   type="number"
                                   value={stock.avgPrice || ''}
                                   onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                                  className="w-full pl-5 pr-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
+                                  className="w-full pl-5 pr-2 py-1.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-lg font-semibold focus:outline-none focus:bg-amber-500/15 transition-all text-[11px]"
                                   placeholder="Avg"
                                 />
                               </div>
@@ -1019,11 +1019,11 @@ export default function DashboardPage() {
                                 placeholder="Qty"
                                 value={stock.quantity || ''}
                                 onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                                className="col-span-3 w-full px-2 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-[11px]"
+                                className="col-span-3 w-full px-2 py-1.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-lg font-semibold text-center focus:outline-none focus:bg-amber-500/15 transition-all text-[11px]"
                               />
                               <button
                                 onClick={() => removeStock(stock.symbol)}
-                                className="col-span-4 px-2 py-1.5 rounded-lg border border-rose-300/30 bg-rose-500/10 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-all"
+                                className="col-span-4 px-2 py-1.5 rounded-lg border border-amber-300/40 bg-amber-500/15 text-[11px] font-semibold text-amber-100 hover:bg-amber-500/25 transition-all"
                               >
                                 Remove
                               </button>
@@ -1039,9 +1039,9 @@ export default function DashboardPage() {
           </div>
 
           {isEditing && (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 p-4">
               <div className="relative z-[90]" ref={mobileDropdownRef}>
-                <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
+                <p className="text-[12px] font-semibold tracking-[0.02em] text-amber-100 mb-2">Add or Merge Lot</p>
                 <div className="grid grid-cols-1 gap-2">
                   <input
                     type="text"
@@ -1049,7 +1049,7 @@ export default function DashboardPage() {
                     value={newSymbol}
                     onChange={(e) => handleSearchChange(e.target.value)}
                     onFocus={() => setShowDropdown(true)}
-                    className="px-4 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                    className="px-4 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-300"
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -1057,25 +1057,25 @@ export default function DashboardPage() {
                       placeholder="Qty"
                       value={newQuantity}
                       onChange={(e) => setNewQuantity(e.target.value)}
-                      className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                      className="px-3 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-300"
                     />
                     <input
                       type="number"
                       placeholder="Buy Price"
                       value={newBuyPrice}
                       onChange={(e) => setNewBuyPrice(e.target.value)}
-                      className="px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold"
+                      className="px-3 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-300"
                     />
                   </div>
                   <button
                     onClick={addOrMergeHolding}
-                    className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold"
+                    className="w-full px-3 py-2.5 bg-amber-500 text-slate-900 rounded-xl text-[12px] font-semibold hover:bg-amber-400 transition-all"
                   >
                     Add
                   </button>
                 </div>
 
-                {addStatus && <p className="mt-2 text-[11px] font-semibold text-blue-100">{addStatus}</p>}
+                {addStatus && <p className="mt-2 text-[11px] font-semibold text-amber-100">{addStatus}</p>}
               </div>
             </div>
           )}
@@ -1085,7 +1085,7 @@ export default function DashboardPage() {
               onClick={toggleEditMode}
               className={`px-5 py-2.5 border rounded-xl text-[12px] font-semibold transition-all ${
                 isEditing
-                  ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600'
+                  ? 'bg-amber-500 text-slate-900 border-amber-400 hover:bg-amber-400'
                   : 'bg-white/10 border-white/15 text-blue-100 hover:bg-white/15'
               }`}
             >
@@ -1095,7 +1095,7 @@ export default function DashboardPage() {
             {isEditing && (
               <button
                 onClick={manualSave}
-                className="px-5 py-2.5 bg-green-500 text-white border border-green-500 rounded-xl text-[12px] font-semibold hover:bg-green-600 transition-all"
+                className="px-5 py-2.5 bg-amber-500 text-slate-900 border border-amber-400 rounded-xl text-[12px] font-semibold hover:bg-amber-400 transition-all"
               >
                 {saveStatus}
               </button>
@@ -1193,7 +1193,7 @@ export default function DashboardPage() {
                   value={portfolioName}
                   onChange={(event) => setPortfolioName(event.target.value.slice(0, 60))}
                   placeholder={DEFAULT_PORTFOLIO_NAME}
-                  className="w-full max-w-[420px] px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl text-sm font-semibold focus:outline-none"
+                  className="w-full max-w-[420px] px-3 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-xl text-sm font-semibold focus:outline-none"
                 />
               ) : (
                 <p className="text-lg font-semibold text-white">{displayPortfolioName}</p>
@@ -1218,7 +1218,7 @@ export default function DashboardPage() {
                     {isEditing && (
                       <button 
                         onClick={() => removeStock(stock.symbol)}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-300 hover:text-rose-500 transition-all text-xs p-2"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-200 hover:text-amber-100 transition-all text-xs p-2"
                       >
                         ✕
                       </button>
@@ -1232,12 +1232,12 @@ export default function DashboardPage() {
                       <div className="grid grid-cols-3 items-center justify-center gap-4">
                         {isEditing ? (
                           <div className="relative w-full col-span-2">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-200/60 font-bold text-xs">$</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-200/80 font-bold text-xs">$</span>
                             <input 
                               type="number"
                               value={stock.avgPrice || ''}
                               onChange={(e) => updateStock(stock.symbol, 'avgPrice', e.target.value)}
-                              className="w-full pl-7 pr-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold focus:outline-none focus:bg-slate-800 transition-all text-sm"
+                              className="w-full pl-7 pr-3 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-xl font-semibold focus:outline-none focus:bg-amber-500/15 transition-all text-sm"
                             />
                           </div>
                         ) : (
@@ -1252,7 +1252,7 @@ export default function DashboardPage() {
                             placeholder="Qty"
                             value={stock.quantity || ''}
                             onChange={(e) => updateStock(stock.symbol, 'quantity', e.target.value)}
-                            className="w-full px-2 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-xl font-semibold text-center focus:outline-none focus:bg-slate-800 transition-all text-sm col-span-1"
+                            className="w-full px-2 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 focus:border-amber-300 rounded-xl font-semibold text-center focus:outline-none focus:bg-amber-500/15 transition-all text-sm col-span-1"
                           />
                         ) : (
                           <span className="text-slate-100 font-bold col-span-1 text-center">
@@ -1271,9 +1271,9 @@ export default function DashboardPage() {
                 )}
 
                 {isEditing && (
-                  <div className="px-8 py-5 bg-white/5 border-t border-white/10">
+                  <div className="px-8 py-5 bg-amber-500/10 border-t border-amber-300/30">
                     <div className="relative z-[90]" ref={desktopDropdownRef}>
-                      <p className="text-[12px] font-semibold tracking-[0.02em] text-blue-100 mb-2">Add or Merge Lot</p>
+                      <p className="text-[12px] font-semibold tracking-[0.02em] text-amber-100 mb-2">Add or Merge Lot</p>
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                         <input
                           type="text"
@@ -1281,34 +1281,34 @@ export default function DashboardPage() {
                           value={newSymbol}
                           onChange={(e) => handleSearchChange(e.target.value)}
                           onFocus={() => setShowDropdown(true)}
-                          className="col-span-1 md:col-span-5 px-4 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold focus:outline-none focus:border-blue-400 shadow-sm transition-all"
+                          className="col-span-1 md:col-span-5 px-4 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 rounded-xl text-sm font-semibold focus:outline-none focus:border-amber-300 shadow-sm transition-all"
                         />
                         <input
                           type="number"
                           placeholder="Qty"
                           value={newQuantity}
                           onChange={(e) => setNewQuantity(e.target.value)}
-                          className="col-span-1 md:col-span-2 px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold text-center focus:outline-none focus:border-blue-400 shadow-sm transition-all"
+                          className="col-span-1 md:col-span-2 px-3 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 rounded-xl text-sm font-semibold text-center focus:outline-none focus:border-amber-300 shadow-sm transition-all"
                         />
                         <input
                           type="number"
                           placeholder="Buy Price"
                           value={newBuyPrice}
                           onChange={(e) => setNewBuyPrice(e.target.value)}
-                          className="col-span-1 md:col-span-3 px-3 py-2.5 bg-slate-800/80 text-slate-100 border border-white/10 rounded-xl text-sm font-semibold text-center focus:outline-none focus:border-blue-400 shadow-sm transition-all"
+                          className="col-span-1 md:col-span-3 px-3 py-2.5 bg-amber-500/10 text-amber-50 border border-amber-300/40 rounded-xl text-sm font-semibold text-center focus:outline-none focus:border-amber-300 shadow-sm transition-all"
                         />
                         <button
                           onClick={addOrMergeHolding}
-                          className="col-span-1 md:col-span-2 px-3 py-2.5 bg-blue-600 text-white rounded-xl text-[12px] font-semibold hover:bg-blue-700 transition-all"
+                          className="col-span-1 md:col-span-2 px-3 py-2.5 bg-amber-500 text-slate-900 rounded-xl text-[12px] font-semibold hover:bg-amber-400 transition-all"
                         >
                           Add
                         </button>
                       </div>
 
-                      <p className="mt-2 text-[11px] font-medium text-blue-200/80">
+                      <p className="mt-2 text-[11px] font-medium text-amber-100/85">
                         Enter quantity and buy price — average buy price updates automatically when merged.
                       </p>
-                      {addStatus && <p className="mt-1 text-[11px] font-semibold text-blue-700">{addStatus}</p>}
+                      {addStatus && <p className="mt-1 text-[11px] font-semibold text-amber-200">{addStatus}</p>}
 
                     </div>
                   </div>
@@ -1322,7 +1322,7 @@ export default function DashboardPage() {
                 onClick={toggleEditMode}
                 className={`px-5 py-2.5 border rounded-xl text-[12px] font-semibold transition-all shadow-sm active:scale-95 ${
                   isEditing
-                    ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600'
+                    ? 'bg-amber-500 text-slate-900 border-amber-400 hover:bg-amber-400'
                     : 'bg-white/10 border-white/15 text-blue-100 hover:bg-white/15'
                 }`}
               >
@@ -1332,7 +1332,7 @@ export default function DashboardPage() {
               {isEditing && (
                 <button
                   onClick={manualSave}
-                  className="px-5 py-2.5 bg-green-500 text-white border border-green-500 rounded-xl text-[12px] font-semibold hover:bg-green-600 transition-all shadow-sm active:scale-95"
+                  className="px-5 py-2.5 bg-amber-500 text-slate-900 border border-amber-400 rounded-xl text-[12px] font-semibold hover:bg-amber-400 transition-all shadow-sm active:scale-95"
                 >
                   {saveStatus}
                 </button>
