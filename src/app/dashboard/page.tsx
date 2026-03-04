@@ -582,6 +582,12 @@ export default function DashboardPage() {
                   >
                     DCF Calc
                   </Link>
+                  <Link
+                    href="/analysis"
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 text-center"
+                  >
+                    Stock Analysis
+                  </Link>
                   <button
                     onClick={fetchChartData}
                     className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50"
@@ -805,6 +811,12 @@ export default function DashboardPage() {
                     className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all text-center"
                   >
                     DCF Calc
+                  </Link>
+                  <Link
+                    href="/analysis"
+                    className="w-full px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all text-center"
+                  >
+                    Stock Analysis
                   </Link>
                   <button
                     onClick={fetchChartData}
