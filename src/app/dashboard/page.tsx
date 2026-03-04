@@ -218,6 +218,21 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    if (!window.matchMedia('(min-width: 1024px)').matches) return;
+
+    const resetToTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    };
+
+    resetToTop();
+    const frameId = window.requestAnimationFrame(resetToTop);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isLoaded) return;
 
     const loadPortfolio = async () => {
@@ -609,6 +624,8 @@ export default function DashboardPage() {
 
   const totalValue = sidebarRows.reduce((sum, row) => sum + row.value, 0);
   const totalDayChange = sidebarRows.reduce((sum, row) => sum + row.dayChangeValue, 0);
+  const previousTotalValue = totalValue - totalDayChange;
+  const totalDayChangePercent = previousTotalValue > 0 ? (totalDayChange / previousTotalValue) * 100 : 0;
 
   const fetchChartData = async () => {
     if (showChart) {
@@ -889,18 +906,6 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Portfolio Value</p>
                   <p className="text-sm font-semibold text-white">${totalValue.toFixed(2)}</p>
-                </div>
-                <div className="h-px bg-white/10" />
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Day Change</p>
-                  <p className={`text-sm font-semibold ${totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                    {totalDayChange >= 0 ? '+' : ''}${Math.abs(totalDayChange).toFixed(2)}
-                  </p>
-                </div>
-                <div className="h-px bg-white/10" />
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Holdings</p>
-                  <p className="text-sm font-semibold text-white">{stocks.length}</p>
                 </div>
               </div>
             )}
@@ -1386,7 +1391,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] text-blue-200 font-medium uppercase tracking-[0.08em]">Day Change</p>
                       <p className={`text-sm font-semibold ${totalDayChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {totalDayChange >= 0 ? '+' : ''}${Math.abs(totalDayChange).toFixed(2)}
+                        {totalDayChange >= 0 ? '+' : ''}${Math.abs(totalDayChange).toFixed(2)} ({totalDayChange >= 0 ? '+' : ''}{Math.abs(totalDayChangePercent).toFixed(2)}%)
                       </p>
                     </div>
 
