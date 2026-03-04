@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
 import { calculateDCF } from '../../../lib/dcf';
 
 type PriceResponse = {
@@ -42,6 +43,7 @@ type FilingRecord = {
 };
 
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
+const ANALYSIS_DRAFT_KEY_PREFIX = 'portfo_stock_analysis_draft_v1_';
 
 const defaultAssumptions = {
   discountRate: '0.10',
@@ -115,36 +117,32 @@ function isScenarioKey(value: string): value is ScenarioKey {
   return value === 'conservative' || value === 'base' || value === 'aggressive';
 }
 
-function updateFilingsRecord(symbol: string, updater: (record: FilingRecord) => FilingRecord) {
+function updateLocalFilingsRecord(symbol: string, companyName: string) {
   if (!symbol) return;
 
   try {
     const raw = localStorage.getItem(FILINGS_KEY);
     const parsed = raw ? (JSON.parse(raw) as FilingRecord[]) : [];
     const normalized = Array.isArray(parsed) ? parsed : [];
-
     const now = new Date().toISOString();
-    const exists = normalized.some((item) => item.symbol === symbol);
 
-    const next = exists
-      ? normalized.map((item) => (item.symbol === symbol ? updater(item) : item))
-      : [
-          updater({
-            symbol,
-            companyName: symbol,
-            createdAt: now,
-            updatedAt: now,
-          }),
-          ...normalized,
-        ];
+    const existing = normalized.find((item) => item.symbol === symbol);
+    const next: FilingRecord = {
+      symbol,
+      companyName: companyName || existing?.companyName || symbol,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
 
-    localStorage.setItem(FILINGS_KEY, JSON.stringify(next));
+    const withoutSymbol = normalized.filter((item) => item.symbol !== symbol);
+    localStorage.setItem(FILINGS_KEY, JSON.stringify([next, ...withoutSymbol]));
   } catch (error) {
-    console.error('Failed to update filings table', error);
+    console.error('Failed to update local filings table', error);
   }
 }
 
 export default function AnalysisSymbolPage() {
+  const { isSignedIn, isLoaded: isUserLoaded } = useUser();
   const params = useParams<{ symbol: string }>();
   const analysisSymbol = decodeURIComponent(params.symbol || '').trim().toUpperCase();
 
@@ -169,24 +167,21 @@ export default function AnalysisSymbolPage() {
   const [savedDcfPrice, setSavedDcfPrice] = useState<number | null>(null);
   const [savedDcfAt, setSavedDcfAt] = useState('');
   const [saveDcfStatus, setSaveDcfStatus] = useState('Save DCF Price');
-  const [saveStatus, setSaveStatus] = useState('Save Analysis File');
+  const [saveStatus, setSaveStatus] = useState('Save Analysis File (Login to Save)');
+  const [isDraftHydrated, setIsDraftHydrated] = useState(false);
 
   const activeScenarioData = scenarioAnalyses[activeScenario];
   const activeScenarioLabel = scenarioOptions.find((option) => option.key === activeScenario)?.label || 'Scenario';
+  const defaultSaveLabel = isSignedIn ? 'Save Analysis File' : 'Save Analysis File (Login to Save)';
 
-  const draftKey = useMemo(() => `portfo_stock_analysis_draft_v1_${analysisSymbol}`, [analysisSymbol]);
-
-  useEffect(() => {
-    if (!analysisSymbol) return;
-
-    updateFilingsRecord(analysisSymbol, (record) => ({
-      ...record,
-      symbol: analysisSymbol,
-      updatedAt: new Date().toISOString(),
-    }));
-  }, [analysisSymbol]);
+  const draftKey = useMemo(() => `${ANALYSIS_DRAFT_KEY_PREFIX}${analysisSymbol}`, [analysisSymbol]);
 
   useEffect(() => {
+    setSaveStatus(defaultSaveLabel);
+  }, [defaultSaveLabel]);
+
+  useEffect(() => {
+    setIsDraftHydrated(false);
     setFcf('');
     setShares('');
     setCash('');
@@ -199,14 +194,14 @@ export default function AnalysisSymbolPage() {
     setDiscountRate(defaultAssumptions.discountRate);
     setTerminalGrowth(defaultAssumptions.terminalGrowth);
     setYears(defaultAssumptions.years);
+    setCompanyName('');
+    setCompanyLogo('');
+    setCurrentPrice(null);
+    setLoadError('');
 
-    if (!analysisSymbol) return;
+    if (!analysisSymbol || !isUserLoaded) return;
 
-    try {
-      const rawDraft = localStorage.getItem(draftKey);
-      if (!rawDraft) return;
-
-      const parsed = JSON.parse(rawDraft) as Draft;
+    const applyDraft = (parsed: Draft) => {
       let nextScenarios = defaultScenarioAnalyses;
       if (parsed.scenarioAnalyses) {
         nextScenarios = {
@@ -240,13 +235,68 @@ export default function AnalysisSymbolPage() {
       if (parsed.discountRate) setDiscountRate(parsed.discountRate);
       if (parsed.terminalGrowth) setTerminalGrowth(parsed.terminalGrowth);
       if (parsed.years) setYears(parsed.years);
-    } catch (error) {
-      console.error('Failed to restore analysis draft', error);
-    }
-  }, [analysisSymbol, draftKey]);
+    };
+
+    const restoreFromLocal = () => {
+      try {
+        const rawDraft = localStorage.getItem(draftKey);
+        if (!rawDraft) return;
+
+        const parsed = JSON.parse(rawDraft) as Draft;
+        applyDraft(parsed);
+      } catch (error) {
+        console.error('Failed to restore local analysis draft', error);
+      }
+    };
+
+    const restoreDraft = async () => {
+      if (!isSignedIn) {
+        restoreFromLocal();
+        setIsDraftHydrated(true);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/analysis/${encodeURIComponent(analysisSymbol)}`, {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          restoreFromLocal();
+          return;
+        }
+
+        const data = await response.json();
+        const filing = data?.filing as { companyName?: string; draft?: unknown } | null;
+
+        if (!filing) {
+          restoreFromLocal();
+          return;
+        }
+
+        if (typeof filing.companyName === 'string' && filing.companyName.trim()) {
+          setCompanyName(filing.companyName.trim());
+        }
+
+        if (filing.draft && typeof filing.draft === 'object') {
+          applyDraft(filing.draft as Draft);
+          return;
+        }
+
+        restoreFromLocal();
+      } catch (error) {
+        console.error('Failed to restore account analysis draft', error);
+        restoreFromLocal();
+      } finally {
+        setIsDraftHydrated(true);
+      }
+    };
+
+    restoreDraft();
+  }, [analysisSymbol, draftKey, isSignedIn, isUserLoaded]);
 
   useEffect(() => {
-    if (!analysisSymbol) return;
+    if (!analysisSymbol || !isDraftHydrated) return;
 
     const draft: Draft = {
       scenarioAnalyses,
@@ -263,7 +313,7 @@ export default function AnalysisSymbolPage() {
     };
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
-  }, [analysisSymbol, draftKey, scenarioAnalyses, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt]);
+  }, [analysisSymbol, draftKey, isDraftHydrated, scenarioAnalyses, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt]);
 
   const loadStockData = async (targetSymbol: string) => {
     if (!targetSymbol) {
@@ -285,13 +335,6 @@ export default function AnalysisSymbolPage() {
       setCurrentPrice(Number(priceData.currentPrice || 0));
       setCompanyName(priceData.companyName || targetSymbol);
       setCompanyLogo(typeof priceData.logo === 'string' ? priceData.logo : '');
-
-      updateFilingsRecord(targetSymbol, (record) => ({
-        ...record,
-        symbol: targetSymbol,
-        companyName: priceData.companyName || record.companyName || targetSymbol,
-        updatedAt: new Date().toISOString(),
-      }));
     } catch (error) {
       console.error('Failed to load stock analysis data', error);
       setLoadError('Failed to load stock data. Please try again.');
@@ -403,8 +446,30 @@ export default function AnalysisSymbolPage() {
     applyScenarioGrowthFromBase(parsedBaseGrowth);
   };
 
-  const saveDraft = () => {
+  const saveDraftToAccount = async (draft: Draft) => {
+    if (!isSignedIn) return false;
+
+    try {
+      const response = await fetch(`/api/analysis/${encodeURIComponent(analysisSymbol)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyName: companyName || analysisSymbol,
+          draft,
+        }),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Failed to save analysis draft to account', error);
+      return false;
+    }
+  };
+
+  const saveDraft = async () => {
     if (!analysisSymbol) return;
+
+    setSaveStatus('Saving...');
 
     const draft: Draft = {
       scenarioAnalyses,
@@ -421,8 +486,21 @@ export default function AnalysisSymbolPage() {
     };
 
     localStorage.setItem(draftKey, JSON.stringify(draft));
-    setSaveStatus('Saved');
-    setTimeout(() => setSaveStatus('Save Analysis File'), 1200);
+    updateLocalFilingsRecord(analysisSymbol, companyName || analysisSymbol);
+
+    let accountSaved = false;
+    if (isSignedIn) {
+      accountSaved = await saveDraftToAccount(draft);
+    }
+
+    setSaveStatus(
+      isSignedIn
+        ? accountSaved
+          ? 'Saved To Account'
+          : 'Saved Local Only'
+        : 'Saved To Browser',
+    );
+    setTimeout(() => setSaveStatus(defaultSaveLabel), 1500);
   };
 
   const saveDcfPriceToFile = () => {

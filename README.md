@@ -122,6 +122,27 @@ Returns the signed-in user's saved holdings from Supabase. If Supabase is not co
 
 Saves the signed-in user's holdings to Supabase.
 
+### Analysis Filings (Account Save)
+`GET /api/analysis`
+
+Returns the signed-in user's analysis filing rows (symbol/company/timestamps).
+
+`PUT /api/analysis`
+
+Upserts a filing row for a symbol (used by the filings table).
+
+`GET /api/analysis/[symbol]`
+
+Returns one filing row and its saved analysis draft.
+
+`PUT /api/analysis/[symbol]`
+
+Saves a symbol's analysis draft to the signed-in user's account.
+
+`DELETE /api/analysis/[symbol]`
+
+Deletes a symbol filing (and its draft) from the signed-in user's account.
+
 ### Health Check
 `GET /api/health`
 
@@ -220,6 +241,16 @@ create table if not exists public.portfolios (
 	user_id text primary key,
 	holdings jsonb not null default '[]'::jsonb,
 	updated_at timestamptz not null default now()
+);
+
+create table if not exists public.analysis_filings (
+	user_id text not null,
+	symbol text not null,
+	company_name text not null default '',
+	draft jsonb,
+	created_at timestamptz not null default now(),
+	updated_at timestamptz not null default now(),
+	primary key (user_id, symbol)
 );
 ```
 

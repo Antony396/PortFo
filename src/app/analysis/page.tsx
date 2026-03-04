@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
 
 type Suggestion = {
   symbol: string;
@@ -17,6 +18,32 @@ type FilingRecord = {
 };
 
 const FILINGS_KEY = 'portfo_stock_analysis_filings_v1';
+const ANALYSIS_DRAFT_KEY_PREFIX = 'portfo_stock_analysis_draft_v1_';
+
+function normalizeFilings(items: unknown): FilingRecord[] {
+  if (!Array.isArray(items)) return [];
+
+  return items
+    .filter((item) => typeof item === 'object' && item !== null)
+    .map((item) => {
+      const entry = item as Partial<FilingRecord>;
+      const symbol = typeof entry.symbol === 'string' ? entry.symbol.trim().toUpperCase() : '';
+      const companyName = typeof entry.companyName === 'string' ? entry.companyName : '';
+      const createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : '';
+      const updatedAt = typeof entry.updatedAt === 'string' ? entry.updatedAt : '';
+
+      if (!symbol) return null;
+
+      const now = new Date().toISOString();
+      return {
+        symbol,
+        companyName: companyName || symbol,
+        createdAt: createdAt || now,
+        updatedAt: updatedAt || createdAt || now,
+      };
+    })
+    .filter((item): item is FilingRecord => Boolean(item));
+}
 
 function formatDate(value: string) {
   const timestamp = Date.parse(value);
@@ -30,6 +57,7 @@ function formatDate(value: string) {
 }
 
 export default function AnalysisPage() {
+  const { isSignedIn, isLoaded: isUserLoaded } = useUser();
   const router = useRouter();
   const [symbolInput, setSymbolInput] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -37,8 +65,10 @@ export default function AnalysisPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [filings, setFilings] = useState<FilingRecord[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isFilingsLoaded, setIsFilingsLoaded] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
+  const [confirmDeleteSymbol, setConfirmDeleteSymbol] = useState<string | null>(null);
   const [status, setStatus] = useState('');
 
   useEffect(() => {
@@ -53,40 +83,83 @@ export default function AnalysisPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const rawFilings = localStorage.getItem(FILINGS_KEY);
-      if (!rawFilings) {
-        setIsLoaded(true);
+    if (!isUserLoaded) return;
+
+    const loadLocalFilings = () => {
+      try {
+        const rawFilings = localStorage.getItem(FILINGS_KEY);
+        if (!rawFilings) {
+          setFilings([]);
+          return;
+        }
+
+        const parsed = JSON.parse(rawFilings) as FilingRecord[];
+        setFilings(normalizeFilings(parsed));
+      } catch (error) {
+        console.error('Failed to load stock analysis filings', error);
+        setFilings([]);
+      }
+    };
+
+    const loadFilings = async () => {
+      if (!isSignedIn) {
+        loadLocalFilings();
+        setIsFilingsLoaded(true);
         return;
       }
 
-      const parsed = JSON.parse(rawFilings) as FilingRecord[];
-      if (!Array.isArray(parsed)) {
-        setIsLoaded(true);
-        return;
+      try {
+        const response = await fetch('/api/analysis', { cache: 'no-store' });
+
+        if (!response.ok) {
+          loadLocalFilings();
+          setIsFilingsLoaded(true);
+          return;
+        }
+
+        const data = await response.json();
+        const dbFilings = normalizeFilings(data?.filings);
+
+        if (data?.storage === 'database') {
+          setFilings(dbFilings);
+        } else {
+          loadLocalFilings();
+        }
+      } catch (error) {
+        console.error('Failed to load account analysis filings', error);
+        loadLocalFilings();
+      } finally {
+        setIsFilingsLoaded(true);
       }
+    };
 
-      const normalized = parsed
-        .filter((item) => typeof item?.symbol === 'string' && item.symbol.trim())
-        .map((item) => ({
-          symbol: item.symbol.trim().toUpperCase(),
-          companyName: item.companyName || item.symbol.trim().toUpperCase(),
-          createdAt: item.createdAt || new Date().toISOString(),
-          updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
-        }));
-
-      setFilings(normalized);
-    } catch (error) {
-      console.error('Failed to load stock analysis filings', error);
-    } finally {
-      setIsLoaded(true);
-    }
-  }, []);
+    loadFilings();
+  }, [isSignedIn, isUserLoaded]);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isFilingsLoaded) return;
     localStorage.setItem(FILINGS_KEY, JSON.stringify(filings));
-  }, [filings, isLoaded]);
+  }, [filings, isFilingsLoaded]);
+
+  const saveFilingToAccount = async (record: FilingRecord) => {
+    if (!isSignedIn) return false;
+
+    try {
+      const response = await fetch('/api/analysis', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: record.symbol,
+          companyName: record.companyName,
+        }),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Failed to save filing to account', error);
+      return false;
+    }
+  };
 
   const handleSearchChange = async (query: string) => {
     const upperQuery = query.toUpperCase();
@@ -141,19 +214,34 @@ export default function AnalysisPage() {
       }
     } catch (error) {
       console.error('Failed to fetch company profile for filing row', error);
-    } finally {
-      const now = new Date().toISOString();
-      setFilings((prev) => [{ symbol: ticker, companyName, createdAt: now, updatedAt: now }, ...prev]);
-      setSymbolInput('');
-      setSuggestions([]);
-      setShowDropdown(false);
-      setIsAdding(false);
-      setStatus('Added to filings. Click the symbol to open your write-up.');
     }
+
+    const now = new Date().toISOString();
+    const record: FilingRecord = { symbol: ticker, companyName, createdAt: now, updatedAt: now };
+    setFilings((prev) => [record, ...prev]);
+    setSymbolInput('');
+    setSuggestions([]);
+    setShowDropdown(false);
+
+    let accountSaved = false;
+    if (isSignedIn) {
+      accountSaved = await saveFilingToAccount(record);
+    }
+
+    setStatus(
+      isSignedIn
+        ? accountSaved
+          ? 'Added to filings and saved to account.'
+          : 'Added to filings locally. Account save is unavailable.'
+        : 'Added to filings. Click the symbol to open your write-up.',
+    );
+    setIsAdding(false);
   };
 
-  const openFiling = (symbol: string) => {
+  const openFiling = async (symbol: string) => {
     const now = new Date().toISOString();
+    let updatedRecord: FilingRecord | null = null;
+
     setFilings((prev) =>
       prev.map((item) =>
         item.symbol === symbol
@@ -165,7 +253,53 @@ export default function AnalysisPage() {
       ),
     );
 
+    const existing = filings.find((item) => item.symbol === symbol);
+    if (existing) {
+      updatedRecord = { ...existing, updatedAt: now };
+    }
+
+    if (updatedRecord) {
+      await saveFilingToAccount(updatedRecord);
+    }
+
     router.push(`/analysis/${encodeURIComponent(symbol)}`);
+  };
+
+  const removeFiling = async (symbol: string) => {
+    setRemovingSymbol(symbol);
+    setStatus('');
+
+    setFilings((prev) => prev.filter((item) => item.symbol !== symbol));
+    localStorage.removeItem(`${ANALYSIS_DRAFT_KEY_PREFIX}${symbol}`);
+
+    if (!isSignedIn) {
+      setStatus(`${symbol} removed from your filings table.`);
+      setRemovingSymbol(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/analysis/${encodeURIComponent(symbol)}`, {
+        method: 'DELETE',
+      });
+
+      setStatus(
+        response.ok
+          ? `${symbol} removed from your filings table and account database.`
+          : `${symbol} removed locally. Could not remove from account database.`,
+      );
+    } catch (error) {
+      console.error('Failed to delete filing from account', error);
+      setStatus(`${symbol} removed locally. Could not remove from account database.`);
+    } finally {
+      setRemovingSymbol(null);
+    }
+  };
+
+  const confirmRemoveFiling = async () => {
+    if (!confirmDeleteSymbol) return;
+    await removeFiling(confirmDeleteSymbol);
+    setConfirmDeleteSymbol(null);
   };
 
   const sortedFilings = [...filings].sort(
@@ -257,12 +391,13 @@ export default function AnalysisPage() {
                     <th className="py-3 text-left font-semibold">Company</th>
                     <th className="py-3 text-left font-semibold">Created</th>
                     <th className="py-3 text-left font-semibold">Last Opened</th>
+                    <th className="py-3 text-left font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedFilings.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-blue-100/80 font-medium">
+                      <td colSpan={5} className="py-8 text-center text-blue-100/80 font-medium">
                         No filings yet. Add a stock to start your personal analysis table.
                       </td>
                     </tr>
@@ -280,6 +415,23 @@ export default function AnalysisPage() {
                         <td className="py-4 text-blue-50">{filing.companyName}</td>
                         <td className="py-4 text-blue-100/85">{formatDate(filing.createdAt)}</td>
                         <td className="py-4 text-blue-100/85">{formatDate(filing.updatedAt)}</td>
+                        <td className="py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openFiling(filing.symbol)}
+                              className="px-3 py-1.5 rounded-lg border border-amber-300/30 bg-amber-500/10 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/20 transition-all"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteSymbol(filing.symbol)}
+                              disabled={removingSymbol === filing.symbol}
+                              className="px-3 py-1.5 rounded-lg border border-rose-300/30 bg-rose-500/10 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {removingSymbol === filing.symbol ? 'Removing…' : 'Remove'}
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -288,6 +440,34 @@ export default function AnalysisPage() {
             </div>
           </div>
         </div>
+
+        {confirmDeleteSymbol && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center px-4">
+            <div className="w-full max-w-md bg-slate-900 border border-white/15 rounded-2xl shadow-2xl p-5">
+              <h2 className="text-base font-semibold text-blue-50">Remove Filing</h2>
+              <p className="mt-2 text-sm text-blue-100/85 leading-relaxed">
+                Remove <span className="font-semibold text-blue-50">{confirmDeleteSymbol}</span> from your filing table?
+                This also removes its saved analysis from your account database when available.
+              </p>
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setConfirmDeleteSymbol(null)}
+                  disabled={removingSymbol === confirmDeleteSymbol}
+                  className="px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 text-[11px] font-semibold text-blue-100 hover:bg-white/15 transition-all disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRemoveFiling}
+                  disabled={removingSymbol === confirmDeleteSymbol}
+                  className="px-3 py-1.5 rounded-lg border border-rose-300/30 bg-rose-500/10 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 transition-all disabled:opacity-60"
+                >
+                  {removingSymbol === confirmDeleteSymbol ? 'Removing…' : 'Confirm Remove'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
