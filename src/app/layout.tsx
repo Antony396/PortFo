@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
 import { Manrope } from 'next/font/google';
+import SafariViewportFix from '../components/viewport/SafariViewportFix';
 import './globals.css';
 
 const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope' });
@@ -26,6 +27,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body className={`${manrope.className} ${manrope.variable} bg-slate-950 min-h-screen overflow-x-hidden`}>
+          <SafariViewportFix />
           {children}
         </body>
       </html>

@@ -2,6 +2,7 @@
 
 :root {
 	color-scheme: dark;
+	--safari-vv-offset-top: 0px;
 }
 
 html,
@@ -28,6 +29,25 @@ body {
 
 body {
 	min-height: 100dvh;
+}
+
+@supports (-webkit-touch-callout: none) {
+	html.ios-safari-vv-fix,
+	html.ios-safari-vv-fix body {
+		height: -webkit-fill-available;
+	}
+
+	html.ios-safari-vv-fix {
+		overflow: hidden;
+	}
+
+	html.ios-safari-vv-fix body {
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-y: none;
+		margin-top: calc(var(--safari-vv-offset-top) * -1);
+		padding-top: var(--safari-vv-offset-top);
+	}
 }
 
 .bg-market-mesh {
