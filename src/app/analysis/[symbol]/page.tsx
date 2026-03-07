@@ -43,6 +43,14 @@ type Draft = {
   publishedFile?: PublishedAnalysisFile;
   thesis?: string;
   growthRate?: string;
+  segments?: BusinessSegment[];
+};
+
+type BusinessSegment = {
+  name: string;
+  revenue: string;
+  operatingIncome: string;
+  growth: string;
 };
 
 type PublishedAnalysisFile = {
@@ -54,6 +62,7 @@ type PublishedAnalysisFile = {
   activeScenario: ScenarioKey;
   savedDcfPrice: number | null;
   savedDcfAt: string;
+  segments?: BusinessSegment[];
 };
 
 type DraftRecoverySnapshot = {
@@ -192,6 +201,19 @@ function isScenarioKey(value: string): value is ScenarioKey {
   return value === 'conservative' || value === 'base' || value === 'aggressive';
 }
 
+function sanitizeSegments(value: unknown): BusinessSegment[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((raw) => ({
+      name: typeof raw.name === 'string' ? raw.name : '',
+      revenue: typeof raw.revenue === 'string' ? raw.revenue : '',
+      operatingIncome: typeof raw.operatingIncome === 'string' ? raw.operatingIncome : '',
+      growth: typeof raw.growth === 'string' ? raw.growth : '',
+    }))
+    .filter((s) => s.name.trim().length > 0);
+}
+
 function sanitizePublishedFile(value: unknown): PublishedAnalysisFile | null {
   if (!value || typeof value !== 'object') return null;
 
@@ -228,6 +250,7 @@ function sanitizePublishedFile(value: unknown): PublishedAnalysisFile | null {
     activeScenario,
     savedDcfPrice,
     savedDcfAt,
+    segments: sanitizeSegments(raw.segments),
   };
 }
 
@@ -294,6 +317,7 @@ export default function AnalysisSymbolPage() {
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
   const [publishedFile, setPublishedFile] = useState<PublishedAnalysisFile | null>(null);
+  const [segments, setSegments] = useState<BusinessSegment[]>([]);
 
   const activeScenarioData = scenarioAnalyses[activeScenario];
   const activeScenarioLabel = scenarioOptions.find((option) => option.key === activeScenario)?.label || 'Scenario';
@@ -354,6 +378,7 @@ export default function AnalysisSymbolPage() {
     years,
     savedDcfPrice,
     savedDcfAt,
+    segments,
     publishedFile: params?.publishedOverride ?? publishedFile ?? undefined,
   });
 
@@ -415,6 +440,7 @@ export default function AnalysisSymbolPage() {
     setDiscountRate(defaultAssumptions.discountRate);
     setTerminalGrowth(defaultAssumptions.terminalGrowth);
     setYears(defaultAssumptions.years);
+    setSegments([]);
     setCompanyName('');
     setCompanyLogo('');
     setCurrentPrice(null);
@@ -450,6 +476,7 @@ export default function AnalysisSymbolPage() {
         setSavedDcfAt(parsedPublishedFile.savedDcfAt);
         setCasesSummary(parsedPublishedFile.casesSummary || restoredSummary);
         setCompanyName(parsedPublishedFile.companyName || analysisSymbol);
+        setSegments(sanitizeSegments(parsedPublishedFile.segments));
         return;
       }
 
@@ -487,6 +514,7 @@ export default function AnalysisSymbolPage() {
       if (parsed.discountRate) setDiscountRate(parsed.discountRate);
       if (parsed.terminalGrowth) setTerminalGrowth(parsed.terminalGrowth);
       if (parsed.years) setYears(parsed.years);
+      setSegments(sanitizeSegments(parsed.segments));
     };
 
     const restoreFromLocal = () => {
@@ -598,7 +626,7 @@ export default function AnalysisSymbolPage() {
     if (isSignedIn && user?.id) {
       saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
     }
-  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, publicReviewOptIn, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName]);
+  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, publicReviewOptIn, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName, segments]);
 
   const loadStockData = async (targetSymbol: string) => {
     if (!targetSymbol) {
@@ -813,6 +841,7 @@ export default function AnalysisSymbolPage() {
       activeScenario,
       savedDcfPrice,
       savedDcfAt,
+      segments,
     };
 
     setPublishedFile(nextPublishedFile);
@@ -972,6 +1001,13 @@ export default function AnalysisSymbolPage() {
                 </ul>
               </div>
             </header>
+
+            {publishedFile.segments && publishedFile.segments.length > 0 && (
+              <section className="mb-10">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-6">Business Segments</h2>
+                <SegmentCharts segments={publishedFile.segments} />
+              </section>
+            )}
 
             <section>
               <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Analysis</h2>
@@ -1238,6 +1274,82 @@ export default function AnalysisSymbolPage() {
               </div>
             </div>
 
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em]">Business Segments</p>
+                {!isViewMode && (
+                  <button
+                    onClick={() => setSegments((prev) => [...prev, { name: '', revenue: '', operatingIncome: '', growth: '' }])}
+                    className="px-3 py-1 bg-blue-600/20 border border-blue-400/30 rounded-lg text-[10px] font-semibold text-blue-200 hover:bg-blue-600/30 transition-all"
+                  >
+                    + Add Segment
+                  </button>
+                )}
+              </div>
+
+              {!isViewMode && segments.length === 0 && (
+                <p className="text-[11px] text-blue-100/40 mb-3">Add segments to show revenue &amp; operating income breakdowns with projected growth toggles.</p>
+              )}
+
+              {segments.length > 0 && !isViewMode && (
+                <div className="space-y-2 mb-4">
+                  <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 px-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Segment</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Revenue ($M)</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Op. Income ($M)</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Growth % /yr</p>
+                    <span />
+                  </div>
+                  {segments.map((seg, idx) => (
+                    <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 items-center">
+                      <input
+                        type="text"
+                        placeholder="e.g. Intelligent Cloud"
+                        value={seg.name}
+                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 106265"
+                        value={seg.revenue}
+                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, revenue: e.target.value } : s))}
+                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 44589"
+                        value={seg.operatingIncome}
+                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, operatingIncome: e.target.value } : s))}
+                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 15"
+                        value={seg.growth}
+                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, growth: e.target.value } : s))}
+                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                      />
+                      <button
+                        onClick={() => setSegments((prev) => prev.filter((_, i) => i !== idx))}
+                        className="px-2 py-1.5 bg-rose-500/10 border border-rose-400/25 rounded-lg text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 transition-all"
+                        aria-label="Remove segment"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {segments.length > 0 && (
+                <SegmentCharts segments={segments} />
+              )}
+            </div>
+
             <div className="mt-4">
               <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
                 Analysis
@@ -1361,6 +1473,121 @@ function FundamentalPill({
     <div className="rounded-lg border border-white/10 bg-slate-900/45 px-3 py-2">
       <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-blue-200/85">{label}</p>
       <p className="mt-1 text-[12px] font-semibold text-blue-50">{value}</p>
+    </div>
+  );
+}
+
+const SEGMENT_PALETTE = ['#60A5FA', '#A78BFA', '#34D399', '#F59E0B', '#F472B6', '#38BDF8', '#F87171'];
+
+function SegmentPieChart({ title, slices }: { title: string; slices: Array<{ name: string; value: number }> }) {
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  if (total === 0) return null;
+
+  const radius = 90;
+  const center = radius;
+  let cumulative = 0;
+
+  const paths = slices.map((s, idx) => {
+    const startAngle = (2 * Math.PI * cumulative) / total - Math.PI / 2;
+    const endAngle = (2 * Math.PI * (cumulative + s.value)) / total - Math.PI / 2;
+    cumulative += s.value;
+    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    const x1 = center + radius * Math.cos(startAngle);
+    const y1 = center + radius * Math.sin(startAngle);
+    const x2 = center + radius * Math.cos(endAngle);
+    const y2 = center + radius * Math.sin(endAngle);
+    const color = SEGMENT_PALETTE[idx % SEGMENT_PALETTE.length];
+    return <path key={idx} d={`M${center},${center} L${x1},${y1} A${radius},${radius} 0 ${largeArc} 1 ${x2},${y2} Z`} fill={color} />;
+  });
+
+  return (
+    <div className="flex flex-col items-center">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-blue-200/85 mb-3">{title}</p>
+      <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
+        {paths}
+        <circle cx={center} cy={center} r={36} fill="#0F172A" stroke="#1E293B" strokeWidth="1" />
+      </svg>
+      <div className="mt-3 w-full space-y-1.5">
+        {slices.map((s, idx) => {
+          const pct = ((s.value / total) * 100).toFixed(1);
+          const label = s.value >= 1000 ? `$${(s.value / 1000).toFixed(1)}B` : `$${s.value.toFixed(0)}M`;
+          return (
+            <div key={s.name} className="flex items-center justify-between gap-2 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: SEGMENT_PALETTE[idx % SEGMENT_PALETTE.length] }} />
+                <span className="text-[12px] font-medium text-slate-200 truncate">{s.name}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-[12px] font-semibold text-blue-200">{pct}%</span>
+                <span className="text-[11px] text-blue-100/60">{label}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SegmentCharts({ segments }: { segments: BusinessSegment[] }) {
+  const [viewYear, setViewYear] = useState<0 | 5 | 10>(0);
+
+  const hasGrowthData = segments.some((s) => {
+    const g = Number(s.growth);
+    return s.growth.trim() !== '' && Number.isFinite(g);
+  });
+
+  const project = (base: number, growthStr: string, years: number): number => {
+    if (years === 0) return base;
+    const g = Number(growthStr) / 100;
+    return Number.isFinite(g) ? base * (1 + g) ** years : base;
+  };
+
+  const revenueSlices = segments
+    .map((s) => ({ name: s.name.trim(), value: project(Number(s.revenue), s.growth, viewYear) }))
+    .filter((s) => s.name && Number.isFinite(s.value) && s.value > 0);
+
+  const opIncomeSlices = segments
+    .map((s) => ({ name: s.name.trim(), value: project(Number(s.operatingIncome), s.growth, viewYear) }))
+    .filter((s) => s.name && Number.isFinite(s.value) && s.value > 0);
+
+  if (revenueSlices.length === 0 && opIncomeSlices.length === 0) return null;
+
+  const yearLabel = viewYear === 0 ? 'Now' : `+${viewYear}yr`;
+
+  return (
+    <div>
+      {hasGrowthData && (
+        <div className="flex items-center gap-1.5 mb-4">
+          {([0, 5, 10] as const).map((yr) => (
+            <button
+              key={yr}
+              onClick={() => setViewYear(yr)}
+              className={`px-3 py-1 rounded-lg text-[10px] font-semibold border transition-all ${
+                viewYear === yr
+                  ? 'bg-blue-600/25 border-blue-400/40 text-blue-100'
+                  : 'bg-white/5 border-white/10 text-blue-200/60 hover:bg-white/10 hover:text-blue-200'
+              }`}
+            >
+              {yr === 0 ? 'Now' : `+${yr}yr`}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className={`grid gap-8 ${opIncomeSlices.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 max-w-xs'}`}>
+        {revenueSlices.length > 0 && (
+          <SegmentPieChart
+            title={`Revenue by Segment${viewYear > 0 ? ` (${yearLabel} Projected)` : ''}`}
+            slices={revenueSlices}
+          />
+        )}
+        {opIncomeSlices.length > 0 && (
+          <SegmentPieChart
+            title={`Op. Income by Segment${viewYear > 0 ? ` (${yearLabel} Projected)` : ''}`}
+            slices={opIncomeSlices}
+          />
+        )}
+      </div>
     </div>
   );
 }
