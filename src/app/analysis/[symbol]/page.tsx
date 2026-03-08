@@ -98,8 +98,8 @@ const ACCOUNT_ANALYSIS_DRAFT_BACKUP_PREFIX = 'portfo_account_analysis_draft_back
 
 const defaultAssumptions = {
   discountRate: '0.10',
-  terminalGrowth: '0.025',
-  years: '5',
+  terminalGrowth: '0.03',
+  years: '9',
 };
 
 const PROJECTED_GROWTH_SPREAD = 0.2;
@@ -325,6 +325,9 @@ export default function AnalysisSymbolPage() {
   const [savedDcfAt, setSavedDcfAt] = useState('');
   const [publicReviewOptIn, setPublicReviewOptIn] = useState(false);
   const [saveDcfStatus, setSaveDcfStatus] = useState('Save DCF Price');
+  const [aiPromptCopied, setAiPromptCopied] = useState(false);
+  const [aiPasteText, setAiPasteText] = useState('');
+  const [aiPasteError, setAiPasteError] = useState('');
   const [saveStatus, setSaveStatus] = useState('Save');
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
@@ -894,6 +897,69 @@ export default function AnalysisSymbolPage() {
     setTimeout(() => setSaveStatus(defaultSaveLabel), 1500);
   };
 
+  const dcfPrompt = analysisSymbol
+    ? `Role: You are a Financial Data Specialist.
+Task: Provide DCF inputs for ${analysisSymbol} based on the Calculated Rows on Yahoo Finance.
+
+Instructions:
+
+Free Cash Flow: Go to the "Cash Flow" statement and pull the value labeled exactly as "Free Cash Flow" from the "TTM" column.
+
+Cash Position: Go to the "Balance Sheet" and pull the value labeled exactly as "Cash, Cash Equivalents & Short Term Investments" from the most recent date column.
+
+Debt Position: Go to the "Balance Sheet" and pull the value labeled exactly as "Total Debt" (the Yahoo-calculated sum of loans and leases) from the most recent date column.
+
+Shares: Use "Ordinary Shares Number" or "Diluted Shares Outstanding."
+
+WACC: Estimate a reasonable WACC for ${analysisSymbol}'s sector.
+
+Terminal Growth Rate: Use a conservative long-run growth rate (typically 0.02–0.03).
+
+Unit conversion: All dollar values in millions (e.g. 60,588,000 → 60588 / $85.3B → 85300). Shares in millions (e.g. 7.43B → 7430).
+
+Respond ONLY with the JSON code block below — no explanation before or after:
+
+\`\`\`json
+{
+  "fcf": "<Free Cash Flow TTM in millions, number only>",
+  "sharesOutstanding": "<Ordinary Shares Number or Diluted Shares Outstanding in millions, number only>",
+  "cashEquivalent": "<Cash, Cash Equivalents & Short Term Investments in millions, number only>",
+  "totalDebt": "<Total Debt in millions, number only>",
+  "discountRate": "<WACC as a decimal e.g. 0.09>",
+  "terminalGrowth": "<terminal growth rate as a decimal e.g. 0.025>",
+  "years": "10",
+  "note": "<confirm you used the specific Calculated rows from Yahoo Finance and the date/TTM period pulled>"
+}
+\`\`\``
+    : '';
+
+  const copyDcfPrompt = () => {
+    if (!dcfPrompt) return;
+    void navigator.clipboard.writeText(dcfPrompt).then(() => {
+      setAiPromptCopied(true);
+      setTimeout(() => setAiPromptCopied(false), 2000);
+    });
+  };
+
+  const applyDcfPaste = () => {
+    setAiPasteError('');
+    try {
+      const match = aiPasteText.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, aiPasteText];
+      const raw = (match[1] ?? aiPasteText).trim();
+      const data = JSON.parse(raw) as Record<string, string>;
+      if (data.fcf) setFcf(data.fcf);
+      if (data.sharesOutstanding) setShares(data.sharesOutstanding);
+      if (data.cashEquivalent) setCash(data.cashEquivalent);
+      if (data.totalDebt) setDebt(data.totalDebt);
+      if (data.discountRate) setDiscountRate(data.discountRate);
+      if (data.terminalGrowth) setTerminalGrowth(data.terminalGrowth);
+      if (data.years) setYears(data.years);
+      setAiPasteText('');
+    } catch {
+      setAiPasteError('Could not parse response — make sure you copied the full JSON block.');
+    }
+  };
+
   const saveDcfPriceToFile = () => {
     if (dcfValue === null) {
       setSaveDcfStatus('Enter valid DCF inputs');
@@ -1182,7 +1248,43 @@ export default function AnalysisSymbolPage() {
 
         {showDcfInputs && !isViewMode && (
           <div className="mb-6 bg-white/5 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
-            <p className="text-xs text-blue-100/80 mb-2">Enter your own assumptions and financial inputs, then save a DCF price to this analysis file.</p>
+            <p className="text-xs text-blue-100/80 mb-3">Enter your own assumptions and financial inputs, then save a DCF price to this analysis file.</p>
+
+            <div className="mb-4 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Autofill via AI:</span>
+                <button
+                  onClick={copyDcfPrompt}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-violet-400/30 text-violet-200 hover:bg-violet-500/10 bg-white/5 transition-all"
+                >
+                  {aiPromptCopied ? 'Copied!' : 'Copy Prompt'}
+                </button>
+                <span className="text-[10px] text-blue-200/40">Paste it into ChatGPT, Claude, or Gemini, then paste the response below.</span>
+              </div>
+              <div className="flex gap-2 items-start">
+                <textarea
+                  value={aiPasteText}
+                  onChange={(e) => { setAiPasteText(e.target.value); setAiPasteError(''); }}
+                  placeholder='Paste the AI response here...'
+                  rows={3}
+                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-blue-100 placeholder:text-blue-200/30 resize-none focus:outline-none focus:border-violet-400/40"
+                />
+                <button
+                  onClick={applyDcfPaste}
+                  disabled={!aiPasteText.trim()}
+                  className="px-3 py-2 rounded-lg text-[11px] font-semibold border border-violet-400/30 text-violet-200 hover:bg-violet-500/10 bg-white/5 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  Autofill
+                </button>
+              </div>
+              {aiPasteError && (
+                <p className="text-[11px] text-rose-300 italic">{aiPasteError}</p>
+              )}
+              <p className="text-[10px] text-amber-300/60 italic">
+                AI responses may be inaccurate — always verify figures against the source. Growth rates are not included in the prompt and must be entered manually.
+              </p>
+            </div>
+
             <p className="text-xs text-blue-200/85 mb-3">
               Using {activeScenarioLabel} growth rate: {activeScenarioData.growthRate || '—'}
             </p>
@@ -1191,7 +1293,9 @@ export default function AnalysisSymbolPage() {
               <Field label="Shares Outstanding" value={shares} onChange={setShares} />
               <Field label="Cash Equivalent" value={cash} onChange={setCash} />
               <Field label="Total Debt" value={debt} onChange={setDebt} />
-              <Field label="Projected Growth Rate (Base)" value={scenarioAnalyses.base.growthRate} onChange={handleProjectedGrowthRateChange} />
+              <div className={!scenarioAnalyses.base.growthRate ? 'rounded-xl ring-1 ring-amber-400/50' : ''}>
+                <Field label="Projected Growth Rate (Base) *" value={scenarioAnalyses.base.growthRate} onChange={handleProjectedGrowthRateChange} />
+              </div>
               <Field label="Discount Rate" value={discountRate} onChange={handleDiscountRateChange} />
               <Field label="Terminal Growth" value={terminalGrowth} onChange={setTerminalGrowth} />
               <Field label="Years" value={years} onChange={setYears} />
