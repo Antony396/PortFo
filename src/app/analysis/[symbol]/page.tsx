@@ -23,7 +23,6 @@ type ScenarioKey = 'conservative' | 'base' | 'aggressive';
 type ScenarioAnalysis = {
   growthRate: string;
   analysis: string;
-  likelihood: string;
 };
 
 type Draft = {
@@ -44,13 +43,22 @@ type Draft = {
   thesis?: string;
   growthRate?: string;
   segments?: BusinessSegment[];
+  epsHistory?: EpsDataPoint[];
+  epsPeMultiple?: string;
 };
 
 type BusinessSegment = {
   name: string;
   revenue: string;
   operatingIncome: string;
-  growth: string;
+  growth: string;       // base case growth
+  growthBear?: string;  // conservative case override
+  growthBull?: string;  // aggressive case override
+};
+
+type EpsDataPoint = {
+  year: string;
+  eps: string;
 };
 
 type PublishedAnalysisFile = {
@@ -63,6 +71,8 @@ type PublishedAnalysisFile = {
   savedDcfPrice: number | null;
   savedDcfAt: string;
   segments?: BusinessSegment[];
+  epsHistory?: EpsDataPoint[];
+  epsPeMultiple?: string;
 };
 
 type DraftRecoverySnapshot = {
@@ -95,9 +105,9 @@ const defaultAssumptions = {
 const PROJECTED_GROWTH_SPREAD = 0.2;
 
 const defaultScenarioAnalyses: Record<ScenarioKey, ScenarioAnalysis> = {
-  conservative: { growthRate: '0.04', analysis: '', likelihood: '30' },
-  base: { growthRate: '0.08', analysis: '', likelihood: '40' },
-  aggressive: { growthRate: '0.12', analysis: '', likelihood: '30' },
+  conservative: { growthRate: '0.04', analysis: '' },
+  base: { growthRate: '0.08', analysis: '' },
+  aggressive: { growthRate: '0.12', analysis: '' },
 };
 
 const scenarioOptions: Array<{ key: ScenarioKey; label: string }> = [
@@ -144,18 +154,6 @@ function parseNumericInput(value: string): number {
   return Number(normalized);
 }
 
-function parseLikelihoodPercent(value: string): number {
-  const parsed = parseNumericInput(value);
-  if (Number.isNaN(parsed)) return 0;
-  return Math.max(0, Math.min(100, parsed));
-}
-
-function formatLikelihood(value: string): string {
-  const normalized = parseLikelihoodPercent(value);
-  const rounded = Math.round(normalized * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`;
-}
-
 function formatGrowthRatePercent(value: string): string {
   const parsed = parseNumericInput(value);
   if (Number.isNaN(parsed)) return '—';
@@ -192,9 +190,8 @@ function sanitizeScenarioAnalysis(value: unknown, fallback: ScenarioAnalysis): S
   const raw = value as Partial<ScenarioAnalysis>;
   const growthRate = typeof raw.growthRate === 'string' ? raw.growthRate : fallback.growthRate;
   const analysis = typeof raw.analysis === 'string' ? raw.analysis : fallback.analysis;
-  const likelihood = typeof raw.likelihood === 'string' ? raw.likelihood : fallback.likelihood;
 
-  return { growthRate, analysis, likelihood };
+  return { growthRate, analysis };
 }
 
 function isScenarioKey(value: string): value is ScenarioKey {
@@ -210,8 +207,21 @@ function sanitizeSegments(value: unknown): BusinessSegment[] {
       revenue: typeof raw.revenue === 'string' ? raw.revenue : '',
       operatingIncome: typeof raw.operatingIncome === 'string' ? raw.operatingIncome : '',
       growth: typeof raw.growth === 'string' ? raw.growth : '',
+      growthBear: typeof raw.growthBear === 'string' ? raw.growthBear : '',
+      growthBull: typeof raw.growthBull === 'string' ? raw.growthBull : '',
     }))
     .filter((s) => s.name.trim().length > 0);
+}
+
+function sanitizeEpsHistory(value: unknown): EpsDataPoint[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((raw) => ({
+      year: typeof raw.year === 'string' ? raw.year : '',
+      eps: typeof raw.eps === 'string' ? raw.eps : '',
+    }))
+    .filter((p) => p.year.trim().length > 0);
 }
 
 function sanitizePublishedFile(value: unknown): PublishedAnalysisFile | null {
@@ -251,6 +261,8 @@ function sanitizePublishedFile(value: unknown): PublishedAnalysisFile | null {
     savedDcfPrice,
     savedDcfAt,
     segments: sanitizeSegments(raw.segments),
+    epsHistory: sanitizeEpsHistory(raw.epsHistory),
+    epsPeMultiple: typeof raw.epsPeMultiple === 'string' ? raw.epsPeMultiple : '',
   };
 }
 
@@ -318,6 +330,8 @@ export default function AnalysisSymbolPage() {
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
   const [publishedFile, setPublishedFile] = useState<PublishedAnalysisFile | null>(null);
   const [segments, setSegments] = useState<BusinessSegment[]>([]);
+  const [epsHistory, setEpsHistory] = useState<EpsDataPoint[]>([]);
+  const [epsPeMultiple, setEpsPeMultiple] = useState('');
 
   const activeScenarioData = scenarioAnalyses[activeScenario];
   const activeScenarioLabel = scenarioOptions.find((option) => option.key === activeScenario)?.label || 'Scenario';
@@ -379,6 +393,8 @@ export default function AnalysisSymbolPage() {
     savedDcfPrice,
     savedDcfAt,
     segments,
+    epsHistory,
+    epsPeMultiple,
     publishedFile: params?.publishedOverride ?? publishedFile ?? undefined,
   });
 
@@ -441,6 +457,8 @@ export default function AnalysisSymbolPage() {
     setTerminalGrowth(defaultAssumptions.terminalGrowth);
     setYears(defaultAssumptions.years);
     setSegments([]);
+    setEpsHistory([]);
+    setEpsPeMultiple('');
     setCompanyName('');
     setCompanyLogo('');
     setCurrentPrice(null);
@@ -477,6 +495,8 @@ export default function AnalysisSymbolPage() {
         setCasesSummary(parsedPublishedFile.casesSummary || restoredSummary);
         setCompanyName(parsedPublishedFile.companyName || analysisSymbol);
         setSegments(sanitizeSegments(parsedPublishedFile.segments));
+        setEpsHistory(sanitizeEpsHistory(parsedPublishedFile.epsHistory));
+        setEpsPeMultiple(parsedPublishedFile.epsPeMultiple ?? '');
         return;
       }
 
@@ -493,7 +513,6 @@ export default function AnalysisSymbolPage() {
           base: {
             growthRate: typeof parsed.growthRate === 'string' ? parsed.growthRate : defaultScenarioAnalyses.base.growthRate,
             analysis: typeof parsed.thesis === 'string' ? parsed.thesis : defaultScenarioAnalyses.base.analysis,
-            likelihood: defaultScenarioAnalyses.base.likelihood,
           },
         };
       }
@@ -515,6 +534,8 @@ export default function AnalysisSymbolPage() {
       if (parsed.terminalGrowth) setTerminalGrowth(parsed.terminalGrowth);
       if (parsed.years) setYears(parsed.years);
       setSegments(sanitizeSegments(parsed.segments));
+      setEpsHistory(sanitizeEpsHistory(parsed.epsHistory ?? []));
+      setEpsPeMultiple(typeof parsed.epsPeMultiple === 'string' ? parsed.epsPeMultiple : '');
     };
 
     const restoreFromLocal = () => {
@@ -626,7 +647,7 @@ export default function AnalysisSymbolPage() {
     if (isSignedIn && user?.id) {
       saveAccountDraftBackup(user.id, analysisSymbol, draft, companyName || analysisSymbol);
     }
-  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, publicReviewOptIn, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName, segments]);
+  }, [analysisSymbol, draftKey, isDraftHydrated, isViewMode, scenarioAnalyses, casesSummary, publicReviewOptIn, activeScenario, fcf, shares, cash, debt, discountRate, terminalGrowth, years, savedDcfPrice, savedDcfAt, publishedFile, isSignedIn, user?.id, companyName, segments, epsHistory, epsPeMultiple]);
 
   const loadStockData = async (targetSymbol: string) => {
     if (!targetSymbol) {
@@ -842,6 +863,8 @@ export default function AnalysisSymbolPage() {
       savedDcfPrice,
       savedDcfAt,
       segments,
+      epsHistory,
+      epsPeMultiple,
     };
 
     setPublishedFile(nextPublishedFile);
@@ -908,39 +931,14 @@ export default function AnalysisSymbolPage() {
   }
 
   if (isViewMode && publishedFile) {
-    const orderedScenarioOptions = [...scenarioOptions].sort((a, b) => {
-      const likelihoodA = parseLikelihoodPercent(publishedFile.scenarioAnalyses[a.key]?.likelihood || '0');
-      const likelihoodB = parseLikelihoodPercent(publishedFile.scenarioAnalyses[b.key]?.likelihood || '0');
-
-      if (likelihoodA === likelihoodB) {
-        return scenarioOptions.findIndex((option) => option.key === a.key)
-          - scenarioOptions.findIndex((option) => option.key === b.key);
-      }
-
-      return likelihoodB - likelihoodA;
-    });
-
-    const mostLikelyScenario = orderedScenarioOptions[0];
-    const dcfYears = parseNumericInput(years);
-    const dcfHorizonLabel = Number.isFinite(dcfYears) && dcfYears > 0
-      ? `${Number.isInteger(dcfYears) ? dcfYears.toFixed(0) : dcfYears.toFixed(1)} year${dcfYears === 1 ? '' : 's'}`
-      : 'the configured DCF horizon';
-
-    const scenarioTopMetrics = orderedScenarioOptions.map((option) => {
-      const scenario = publishedFile.scenarioAnalyses[option.key];
-      return {
-        option,
-        scenario,
-        dcfValue: calculateScenarioDcf(scenario?.growthRate || ''),
-      };
-    });
+    const viewScenario = publishedFile.scenarioAnalyses[activeScenario];
+    const viewDcf = calculateScenarioDcf(viewScenario?.growthRate || '');
 
     return (
       <div className="min-h-screen bg-market-mesh py-8 px-4 font-sans text-slate-100">
         <div className="max-w-[1100px] mx-auto">
           <div className="mb-5 flex items-center justify-between gap-3">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200/85">Published Analysis Report</p>
-
             <div className="flex items-center gap-2">
               <Link
                 href={`/analysis/${encodeURIComponent(analysisSymbol)}`}
@@ -959,77 +957,94 @@ export default function AnalysisSymbolPage() {
 
           <article className="mx-auto max-w-[900px] bg-slate-900/70 border border-white/10 rounded-2xl shadow-sm backdrop-blur-md px-10 py-12">
             <header className="border-b border-white/10 pb-7 mb-8">
-              <h1 className="text-4xl font-bold tracking-tight text-blue-50">{publishedFile.symbol}</h1>
-              <p className="mt-2 text-lg text-blue-100/90">{publishedFile.companyName || analysisSymbol}</p>
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h1 className="text-4xl font-bold tracking-tight text-blue-50">{publishedFile.symbol}</h1>
+                  <p className="mt-2 text-lg text-blue-100/90">{publishedFile.companyName || analysisSymbol}</p>
+                  <div className="mt-3 text-[13px] text-blue-100/80 space-y-0.5">
+                    <p><span className="font-semibold text-blue-200">Published:</span> {formatDateTime(publishedFile.publishedAt)}</p>
+                    <p><span className="font-semibold text-blue-200">Saved DCF:</span> {publishedFile.savedDcfPrice !== null ? `$${formatCurrency(publishedFile.savedDcfPrice)}` : '—'}</p>
+                  </div>
+                </div>
 
-              <div className="mt-5 text-[13px] text-blue-100/80">
-                <p>
-                  <span className="font-semibold text-blue-200">Published:</span>{' '}
-                  {formatDateTime(publishedFile.publishedAt)}
-                </p>
-                {/* Most Likely removed for minimal report style */}
-                <p>
-                  <span className="font-semibold text-blue-200">Saved DCF:</span>{' '}
-                  {publishedFile.savedDcfPrice !== null ? `$${formatCurrency(publishedFile.savedDcfPrice)}` : '—'}
-                </p>
+                {/* Scenario toggle */}
+                <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-900/70 p-1.5 shadow-sm self-start">
+                  {scenarioOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      onClick={() => setActiveScenario(option.key)}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-semibold border shadow-sm transition-all ${
+                        option.key === 'conservative'
+                          ? activeScenario === option.key
+                            ? 'bg-rose-500/20 text-rose-100 border-rose-300/40 ring-1 ring-rose-300/25'
+                            : 'bg-rose-500/5 text-rose-200/85 border-rose-300/20 hover:bg-rose-500/10'
+                          : option.key === 'base'
+                            ? activeScenario === option.key
+                              ? 'bg-amber-500/20 text-amber-100 border-amber-300/40 ring-1 ring-amber-300/25'
+                              : 'bg-amber-500/5 text-amber-100/85 border-amber-300/20 hover:bg-amber-500/10'
+                            : activeScenario === option.key
+                              ? 'bg-emerald-500/20 text-emerald-100 border-emerald-300/40 ring-1 ring-emerald-300/25'
+                              : 'bg-emerald-500/5 text-emerald-100/85 border-emerald-300/20 hover:bg-emerald-500/10'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="mt-6">
+              <div className="mt-5 flex flex-wrap gap-4 text-[13px]">
+                <span className="text-blue-200/70">
+                  Growth: <span className="font-semibold text-blue-100">{formatGrowthRatePercent(viewScenario?.growthRate || '')}</span>
+                </span>
+                {viewDcf !== null && (
+                  <span className="text-blue-200/70">
+                    DCF / Share: <span className="font-semibold text-blue-100">${formatCurrency(viewDcf)}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-2">Company Fundamentals</p>
-                <ul className="list-none pl-0">
+                <ul className="list-none pl-0 space-y-0.5">
                   {fundamentalHighlights.map((item) => (
-                    <li key={`published-${item.label}`} className="mb-1">
+                    <li key={`published-${item.label}`} className="text-[13px] text-blue-100/80">
                       <span className="font-semibold text-blue-200">{item.label}:</span> {item.value}
                     </li>
                   ))}
                 </ul>
                 {!hasAnyFundamentalData && (
-                  <p className="mt-2 text-[11px] text-blue-100/70">
-                    Fundamentals are unavailable for this symbol right now.
-                  </p>
+                  <p className="mt-2 text-[11px] text-blue-100/70">Fundamentals are unavailable for this symbol right now.</p>
                 )}
               </div>
-
-              <div className="mt-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-2">Scenario Metrics</p>
-                <ul className="list-none pl-0">
-                  {scenarioTopMetrics.map(({ option, scenario, dcfValue: scenarioDcfValue }) => (
-                    <li key={option.key} className="mb-1">
-                      <span className="font-semibold text-blue-200">{option.label}:</span> Projected Growth: {formatGrowthRatePercent(scenario?.growthRate || '')}, DCF / Share: {scenarioDcfValue !== null ? `$${formatCurrency(scenarioDcfValue)}` : '—'}
-                    </li>
-                  ))}
-                </ul>
-              </div>
             </header>
+
+            {publishedFile.epsHistory && publishedFile.epsHistory.some((p) => p.year.trim() && p.eps.trim()) && (
+              <section className="mb-10">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-6">EPS Analysis</h2>
+                <EpsChart
+                  history={publishedFile.epsHistory}
+                  scenarioAnalyses={publishedFile.scenarioAnalyses}
+                  peMultiple={publishedFile.epsPeMultiple ?? ''}
+                  activeScenario={activeScenario}
+                />
+              </section>
+            )}
 
             {publishedFile.segments && publishedFile.segments.length > 0 && (
               <section className="mb-10">
                 <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-6">Business Segments</h2>
-                <SegmentCharts segments={publishedFile.segments} />
+                <SegmentCharts segments={publishedFile.segments} activeScenario={activeScenario} />
               </section>
             )}
 
             <section>
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85">Analysis</h2>
-              <p className="mt-3 whitespace-pre-wrap leading-7 text-[15px] text-blue-50/95">
-                {publishedFile.casesSummary?.trim() || 'No analysis was included in this published file.'}
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/85 mb-4">
+                {scenarioOptions.find((o) => o.key === activeScenario)?.label} Analysis
+              </h2>
+              <p className="whitespace-pre-wrap leading-7 text-[15px] text-blue-50/95">
+                {viewScenario?.analysis?.trim() || 'No analysis has been written for this scenario yet.'}
               </p>
-            </section>
-
-            <section className="mt-10 space-y-8">
-              {orderedScenarioOptions.map((option) => {
-                const scenario = publishedFile.scenarioAnalyses[option.key];
-
-                return (
-                  <div key={option.key} className="border-t border-white/10 pt-6">
-                    <h3 className="text-xl font-semibold text-blue-50">{option.label} Scenario</h3>
-
-                    <p className="mt-3 whitespace-pre-wrap leading-7 text-[15px] text-blue-50/95">
-                      {scenario?.analysis?.trim() || 'No write-up was provided for this scenario.'}
-                    </p>
-                  </div>
-                );
-              })}
             </section>
           </article>
         </div>
@@ -1276,6 +1291,83 @@ export default function AnalysisSymbolPage() {
 
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="flex items-center justify-between mb-3">
+                <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em]">EPS History</p>
+                {!isViewMode && (
+                  <button
+                    onClick={() => setEpsHistory((prev) => [...prev, { year: '', eps: '' }])}
+                    className="px-3 py-1 bg-blue-600/20 border border-blue-400/30 rounded-lg text-[10px] font-semibold text-blue-200 hover:bg-blue-600/30 transition-all"
+                  >
+                    + Add Year
+                  </button>
+                )}
+              </div>
+
+              {!isViewMode && epsHistory.length === 0 && (
+                <p className="text-[11px] text-blue-100/40 mb-3">Add up to 5 years of historical EPS to generate historical + projected charts.</p>
+              )}
+
+              {epsHistory.length > 0 && !isViewMode && (
+                <div className="space-y-2 mb-3">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Year</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">EPS ($)</p>
+                    <span />
+                  </div>
+                  {epsHistory.map((pt, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                      <input
+                        type="text"
+                        placeholder="e.g. 2023"
+                        value={pt.year}
+                        onChange={(e) => setEpsHistory((prev) => prev.map((p, i) => i === idx ? { ...p, year: e.target.value } : p))}
+                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 11.45"
+                        value={pt.eps}
+                        onChange={(e) => setEpsHistory((prev) => prev.map((p, i) => i === idx ? { ...p, eps: e.target.value } : p))}
+                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                      />
+                      <button
+                        onClick={() => setEpsHistory((prev) => prev.filter((_, i) => i !== idx))}
+                        className="px-2 py-1.5 bg-rose-500/10 border border-rose-400/25 rounded-lg text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 transition-all"
+                        aria-label="Remove year"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!isViewMode && epsHistory.some((p) => p.year.trim() && p.eps.trim()) && (
+                <div className="mb-3">
+                  <label className="block text-[10px] font-semibold text-blue-200/60 uppercase tracking-[0.1em] mb-1">Forward PE Multiple</label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 30"
+                    value={epsPeMultiple}
+                    onChange={(e) => setEpsPeMultiple(e.target.value)}
+                    className="w-32 px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {epsHistory.some((p) => p.year.trim() && p.eps.trim()) && (
+                <EpsChart
+                  history={epsHistory}
+                  scenarioAnalyses={scenarioAnalyses}
+                  peMultiple={epsPeMultiple}
+                  activeScenario={activeScenario}
+                />
+              )}
+            </div>
+
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between mb-3">
                 <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em]">Business Segments</p>
                 {!isViewMode && (
                   <button
@@ -1297,92 +1389,101 @@ export default function AnalysisSymbolPage() {
                     <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Segment</p>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Revenue ($M)</p>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Op. Income ($M)</p>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-200/60">Growth % /yr</p>
+                    <p className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                      activeScenario === 'conservative' ? 'text-rose-300/80' : activeScenario === 'base' ? 'text-amber-300/80' : 'text-emerald-300/80'
+                    }`}>
+                      Growth % /yr
+                    </p>
                     <span />
                   </div>
-                  {segments.map((seg, idx) => (
-                    <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 items-center">
-                      <input
-                        type="text"
-                        placeholder="e.g. Intelligent Cloud"
-                        value={seg.name}
-                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
-                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
-                      />
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="e.g. 106265"
-                        value={seg.revenue}
-                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, revenue: e.target.value } : s))}
-                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
-                      />
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="e.g. 44589"
-                        value={seg.operatingIncome}
-                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, operatingIncome: e.target.value } : s))}
-                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
-                      />
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="e.g. 15"
-                        value={seg.growth}
-                        onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, growth: e.target.value } : s))}
-                        className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
-                      />
-                      <button
-                        onClick={() => setSegments((prev) => prev.filter((_, i) => i !== idx))}
-                        className="px-2 py-1.5 bg-rose-500/10 border border-rose-400/25 rounded-lg text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 transition-all"
-                        aria-label="Remove segment"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+                  {segments.map((seg, idx) => {
+                    const growthValue = activeScenario === 'conservative'
+                      ? (seg.growthBear ?? '')
+                      : activeScenario === 'aggressive'
+                        ? (seg.growthBull ?? '')
+                        : seg.growth;
+                    const setGrowth = (val: string) => setSegments((prev) => prev.map((s, i) => {
+                      if (i !== idx) return s;
+                      if (activeScenario === 'conservative') return { ...s, growthBear: val };
+                      if (activeScenario === 'aggressive') return { ...s, growthBull: val };
+                      return { ...s, growth: val };
+                    }));
+                    return (
+                      <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="e.g. Intelligent Cloud"
+                          value={seg.name}
+                          onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                          className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="e.g. 106265"
+                          value={seg.revenue}
+                          onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, revenue: e.target.value } : s))}
+                          className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="e.g. 44589"
+                          value={seg.operatingIncome}
+                          onChange={(e) => setSegments((prev) => prev.map((s, i) => i === idx ? { ...s, operatingIncome: e.target.value } : s))}
+                          className="px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border border-white/10 focus:border-blue-400 rounded-lg text-xs font-medium focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="e.g. 15"
+                          value={growthValue}
+                          onChange={(e) => setGrowth(e.target.value)}
+                          className={`px-2.5 py-1.5 bg-slate-800/80 text-slate-100 border rounded-lg text-xs font-medium focus:outline-none ${
+                            activeScenario === 'conservative'
+                              ? 'border-rose-300/20 focus:border-rose-300'
+                              : activeScenario === 'base'
+                                ? 'border-amber-300/20 focus:border-amber-300'
+                                : 'border-emerald-300/20 focus:border-emerald-300'
+                          }`}
+                        />
+                        <button
+                          onClick={() => setSegments((prev) => prev.filter((_, i) => i !== idx))}
+                          className="px-2 py-1.5 bg-rose-500/10 border border-rose-400/25 rounded-lg text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 transition-all"
+                          aria-label="Remove segment"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
               {segments.length > 0 && (
-                <SegmentCharts segments={segments} />
+                <SegmentCharts segments={segments} activeScenario={activeScenario} />
               )}
             </div>
 
-            <div className="mt-4">
-              <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">
-                Analysis
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <label className={`block text-[11px] font-semibold uppercase tracking-[0.1em] mb-2 ${
+                activeScenario === 'conservative' ? 'text-rose-300' : activeScenario === 'base' ? 'text-amber-300' : 'text-emerald-300'
+              }`}>
+                {activeScenarioLabel} Analysis
               </label>
-              <textarea
-                value={casesSummary}
-                onChange={(event) => setCasesSummary(event.target.value)}
-                placeholder="Write a concise summary that compares the bearish, base, and bullish outcomes..."
-                readOnly={isViewMode}
-                className={`w-full min-h-[120px] px-4 py-3 bg-slate-800/70 text-slate-100 border border-white/10 rounded-xl text-sm font-medium focus:outline-none ${
-                  isViewMode ? 'cursor-default' : 'focus:border-blue-400'
-                }`}
-              />
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-blue-50">{activeScenarioLabel} Write-Up</h2>
-            </div>
-          </div>
-
-          <div className="p-6">
-            <div className="mb-6">
-              <label className="block text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em] mb-2">Write-Up</label>
-              <p className="text-[11px] text-blue-200/80 mb-2">
-                Include your estimated likelihood for this scenario directly in the write-up (for example: “Likelihood: 35%”).
-              </p>
               <textarea
                 value={activeScenarioData.analysis}
                 onChange={(event) => updateScenario(activeScenario, { analysis: event.target.value })}
-                placeholder={`Write your ${activeScenarioLabel.toLowerCase()} write-up here, including your estimated likelihood (e.g. Likelihood: 35%)…`}
+                placeholder={`Write your ${activeScenarioLabel.toLowerCase()} thesis here…`}
                 readOnly={isViewMode}
-                className={`w-full min-h-[380px] px-4 py-3 bg-slate-800/70 text-slate-100 border border-white/10 rounded-xl text-sm font-medium focus:outline-none ${
-                  isViewMode ? 'cursor-default' : 'focus:border-blue-400'
+                className={`w-full min-h-[260px] px-4 py-3 bg-slate-800/70 text-slate-100 border rounded-xl text-sm font-medium focus:outline-none transition-all ${
+                  isViewMode
+                    ? 'cursor-default border-white/10'
+                    : activeScenario === 'conservative'
+                      ? 'border-rose-300/20 focus:border-rose-300/60'
+                      : activeScenario === 'base'
+                        ? 'border-amber-300/20 focus:border-amber-300/60'
+                        : 'border-emerald-300/20 focus:border-emerald-300/60'
                 }`}
               />
             </div>
@@ -1529,12 +1630,196 @@ function SegmentPieChart({ title, slices }: { title: string; slices: Array<{ nam
   );
 }
 
-function SegmentCharts({ segments }: { segments: BusinessSegment[] }) {
+function EpsChart({
+  history,
+  scenarioAnalyses,
+  peMultiple,
+  activeScenario,
+}: {
+  history: EpsDataPoint[];
+  scenarioAnalyses: Record<ScenarioKey, ScenarioAnalysis>;
+  peMultiple: string;
+  activeScenario: ScenarioKey;
+}) {
+  const [mode, setMode] = useState<'eps' | 'price'>('eps');
+
+  const validHistory = history
+    .filter((p) => p.year.trim() && p.eps.trim() && Number.isFinite(Number(p.eps)))
+    .sort((a, b) => Number(a.year) - Number(b.year));
+
+  if (validHistory.length === 0) return null;
+
+  const pe = Number(peMultiple);
+  const hasPe = Number.isFinite(pe) && pe > 0;
+
+  const lastHistYear = Number(validHistory[validHistory.length - 1].year);
+  const lastHistEps = Number(validHistory[validHistory.length - 1].eps);
+
+  const PROJECTION_YEARS = 5;
+  const scenarioColors: Record<ScenarioKey, string> = {
+    conservative: '#F87171',
+    base: '#60A5FA',
+    aggressive: '#34D399',
+  };
+
+  const buildProjection = (key: ScenarioKey): { year: number; value: number }[] => {
+    const g = Number(scenarioAnalyses[key].growthRate) / 100;
+    if (!Number.isFinite(g)) return [];
+    return Array.from({ length: PROJECTION_YEARS + 1 }, (_, i) => {
+      const eps = lastHistEps * (1 + g) ** i;
+      return { year: lastHistYear + i, value: mode === 'price' && hasPe ? eps * pe : eps };
+    });
+  };
+
+  const toValue = (eps: number) => (mode === 'price' && hasPe ? eps * pe : eps);
+  const histPoints = validHistory.map((p) => ({ year: Number(p.year), value: toValue(Number(p.eps)) }));
+  const projPoints = buildProjection(activeScenario);
+
+  const allValues = [...histPoints.map((p) => p.value), ...projPoints.map((p) => p.value)];
+  const allYears = [...histPoints.map((p) => p.year), ...projPoints.map((p) => p.year)];
+  const minVal = Math.min(...allValues);
+  const maxVal = Math.max(...allValues);
+  const minYear = Math.min(...allYears);
+  const maxYear = Math.max(...allYears);
+
+  const W = 480;
+  const H = 180;
+  const PAD = { top: 14, right: 16, bottom: 28, left: 46 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const valRange = maxVal - minVal || 1;
+  const yearRange = maxYear - minYear || 1;
+
+  const toX = (year: number) => PAD.left + ((year - minYear) / yearRange) * chartW;
+  const toY = (val: number) => PAD.top + chartH - ((val - minVal) / valRange) * chartH;
+
+  const polyline = (pts: { year: number; value: number }[]) =>
+    pts.map((p) => `${toX(p.year)},${toY(p.value)}`).join(' ');
+
+  const color = scenarioColors[activeScenario];
+
+  const yTicks = 4;
+  const xTicks = Array.from(new Set(allYears)).filter((y) => Number.isInteger(y));
+
+  return (
+    <div>
+      <div className="flex items-center justify-end mb-3 flex-wrap gap-2">
+        {hasPe && (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setMode('eps')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-semibold border transition-all ${
+                mode === 'eps'
+                  ? 'bg-blue-600/25 border-blue-400/40 text-blue-100'
+                  : 'bg-white/5 border-white/10 text-blue-200/60 hover:bg-white/10 hover:text-blue-200'
+              }`}
+            >
+              EPS
+            </button>
+            <button
+              onClick={() => setMode('price')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-semibold border transition-all ${
+                mode === 'price'
+                  ? 'bg-blue-600/25 border-blue-400/40 text-blue-100'
+                  : 'bg-white/5 border-white/10 text-blue-200/60 hover:bg-white/10 hover:text-blue-200'
+              }`}
+            >
+              EPS × PE = Price
+            </button>
+          </div>
+        )}
+      </div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+        {/* Y axis ticks */}
+        {Array.from({ length: yTicks + 1 }, (_, i) => {
+          const val = minVal + (valRange / yTicks) * i;
+          const y = toY(val);
+          return (
+            <g key={i}>
+              <line x1={PAD.left} y1={y} x2={PAD.left + chartW} y2={y} stroke="#FFFFFF10" strokeWidth="1" />
+              <text x={PAD.left - 4} y={y + 4} textAnchor="end" fill="#94A3B8" fontSize="9">
+                {mode === 'price' ? `$${val.toFixed(0)}` : `$${val.toFixed(2)}`}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X axis ticks */}
+        {xTicks.map((yr) => (
+          <text key={yr} x={toX(yr)} y={PAD.top + chartH + 16} textAnchor="middle" fill="#94A3B8" fontSize="9">
+            {yr}
+          </text>
+        ))}
+
+        {/* Historical line */}
+        {histPoints.length > 1 && (
+          <polyline points={polyline(histPoints)} fill="none" stroke="#E2E8F0" strokeWidth="2" strokeLinejoin="round" />
+        )}
+
+        {/* Historical dots */}
+        {histPoints.map((p) => (
+          <circle key={p.year} cx={toX(p.year)} cy={toY(p.value)} r={3.5} fill="#E2E8F0" />
+        ))}
+
+        {/* Projection line (dashed) */}
+        {projPoints.length > 1 && (
+          <polyline
+            points={polyline(projPoints)}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeDasharray="5 3"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Projection dots */}
+        {projPoints.slice(1).map((p) => (
+          <circle key={p.year} cx={toX(p.year)} cy={toY(p.value)} r={3} fill={color} />
+        ))}
+
+        {/* Divider at last historical year */}
+        {histPoints.length > 0 && projPoints.length > 0 && (
+          <line
+            x1={toX(lastHistYear)}
+            y1={PAD.top}
+            x2={toX(lastHistYear)}
+            y2={PAD.top + chartH}
+            stroke="#FFFFFF20"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+          />
+        )}
+      </svg>
+
+      <div className="mt-2 flex items-center gap-4 text-[10px] text-blue-100/50">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-5 h-0.5 bg-slate-200 rounded" />
+          Historical
+        </span>
+        <span className="flex items-center gap-1.5" style={{ color }}>
+          <span className="inline-block w-5 h-0.5 rounded" style={{ backgroundColor: color, borderTop: `2px dashed ${color}`, background: 'none' }} />
+          {activeScenario.charAt(0).toUpperCase() + activeScenario.slice(1)} Projected
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SegmentCharts({ segments, activeScenario }: { segments: BusinessSegment[]; activeScenario: ScenarioKey }) {
   const [viewYear, setViewYear] = useState<0 | 5 | 10>(0);
 
+  const getGrowth = (s: BusinessSegment): string => {
+    if (activeScenario === 'conservative') return s.growthBear?.trim() ? s.growthBear : s.growth;
+    if (activeScenario === 'aggressive') return s.growthBull?.trim() ? s.growthBull : s.growth;
+    return s.growth;
+  };
+
   const hasGrowthData = segments.some((s) => {
-    const g = Number(s.growth);
-    return s.growth.trim() !== '' && Number.isFinite(g);
+    const g = Number(getGrowth(s));
+    return getGrowth(s).trim() !== '' && Number.isFinite(g);
   });
 
   const project = (base: number, growthStr: string, years: number): number => {
@@ -1544,11 +1829,11 @@ function SegmentCharts({ segments }: { segments: BusinessSegment[] }) {
   };
 
   const revenueSlices = segments
-    .map((s) => ({ name: s.name.trim(), value: project(Number(s.revenue), s.growth, viewYear) }))
+    .map((s) => ({ name: s.name.trim(), value: project(Number(s.revenue), getGrowth(s), viewYear) }))
     .filter((s) => s.name && Number.isFinite(s.value) && s.value > 0);
 
   const opIncomeSlices = segments
-    .map((s) => ({ name: s.name.trim(), value: project(Number(s.operatingIncome), s.growth, viewYear) }))
+    .map((s) => ({ name: s.name.trim(), value: project(Number(s.operatingIncome), getGrowth(s), viewYear) }))
     .filter((s) => s.name && Number.isFinite(s.value) && s.value > 0);
 
   if (revenueSlices.length === 0 && opIncomeSlices.length === 0) return null;

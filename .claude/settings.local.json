@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -u -c \":*)",
+      "Bash(timeout 30 npx next build)"
+    ]
+  }
+}
