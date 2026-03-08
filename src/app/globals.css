@@ -96,6 +96,38 @@ body {
 	background-blend-mode: screen, screen, normal, normal, normal, normal;
 }
 
+@media print {
+	* {
+		-webkit-print-color-adjust: exact !important;
+		print-color-adjust: exact !important;
+	}
+
+	html, body {
+		background: #0f172a !important;
+		background-image: none !important;
+		margin: 0;
+		padding: 0;
+	}
+
+	.no-print {
+		display: none !important;
+	}
+
+	.print-article {
+		max-width: 100% !important;
+		margin: 0 !important;
+		padding: 32px 48px !important;
+		border: none !important;
+		border-radius: 0 !important;
+		box-shadow: none !important;
+		background: #0f172a !important;
+	}
+
+	.print-article h1 { font-size: 28px !important; }
+	.print-article h2 { font-size: 18px !important; page-break-after: avoid; }
+	.print-article section { page-break-inside: avoid; }
+}
+
 @media (max-width: 767px) {
 	.bg-market-mesh::after {
 		content: '';

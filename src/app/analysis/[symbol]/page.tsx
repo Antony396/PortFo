@@ -1003,9 +1003,15 @@ Respond ONLY with the JSON code block below — no explanation before or after:
     return (
       <div className="min-h-screen bg-market-mesh py-8 px-4 font-sans text-slate-100">
         <div className="max-w-[1100px] mx-auto">
-          <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="no-print mb-5 flex items-center justify-between gap-3">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200/85">Published Analysis Report</p>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
+              >
+                Export PDF
+              </button>
               <Link
                 href={`/analysis/${encodeURIComponent(analysisSymbol)}`}
                 className="px-4 py-2.5 bg-white/10 border border-white/15 rounded-xl text-[12px] font-semibold text-blue-50 hover:bg-white/15 transition-all"
@@ -1021,7 +1027,7 @@ Respond ONLY with the JSON code block below — no explanation before or after:
             </div>
           </div>
 
-          <article className="mx-auto max-w-[900px] bg-slate-900/70 border border-white/10 rounded-2xl shadow-sm backdrop-blur-md px-10 py-12">
+          <article className="print-article mx-auto max-w-[900px] bg-slate-900/70 border border-white/10 rounded-2xl shadow-sm backdrop-blur-md px-10 py-12">
             <header className="border-b border-white/10 pb-7 mb-8">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
@@ -1034,7 +1040,7 @@ Respond ONLY with the JSON code block below — no explanation before or after:
                 </div>
 
                 {/* Scenario toggle */}
-                <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-900/70 p-1.5 shadow-sm self-start">
+                <div className="no-print inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-900/70 p-1.5 shadow-sm self-start">
                   {scenarioOptions.map((option) => (
                     <button
                       key={option.key}
