@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getCached, TTL } from '@/lib/cache';
 
 function parseNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -171,8 +172,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    const yahooFinancials = await fetchYahooFinancials(symbol);
-    const alphaFinancials = apiKey ? await fetchAlphaFinancials(symbol, apiKey) : null;
+    const { yahooFinancials, alphaFinancials } = await getCached(`dcf:${symbol}`, TTL.DCF, async () => {
+      const yahoo = await fetchYahooFinancials(symbol);
+      // Only call Alpha Vantage if Yahoo returned nothing (saves API quota).
+      const alpha = yahoo ? null : (apiKey ? await fetchAlphaFinancials(symbol, apiKey) : null);
+      return { yahooFinancials: yahoo, alphaFinancials: alpha };
+    });
 
     const fcf = prefer(yahooFinancials?.fcf ?? 0, alphaFinancials?.fcf ?? 0);
     const shares = prefer(yahooFinancials?.shares ?? 0, alphaFinancials?.shares ?? 0);

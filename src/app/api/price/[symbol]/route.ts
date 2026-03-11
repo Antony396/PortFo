@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getCached, TTL } from '@/lib/cache';
 
 type FundamentalsPayload = {
   currentPe: number | null;
@@ -274,19 +275,20 @@ export async function GET(
     const quoteUrl = `https://finnhub.io/api/v1/quote?symbol=${upperSymbol}&token=${apiKey}`;
     const profileUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${upperSymbol}&token=${apiKey}`;
 
-    const [priceRes, profileRes] = await Promise.all([
-      fetch(quoteUrl, { next: { revalidate: 20 } }),
-      fetch(profileUrl, { next: { revalidate: 60 * 60 * 12 } }),
+    // Fetch price and profile concurrently, each with their own server-side cache.
+    const [priceData, profileData] = await Promise.all([
+      getCached(`price:${upperSymbol}`, TTL.PRICE, async () => {
+        const res = await fetch(quoteUrl);
+        if (!res.ok) throw Object.assign(new Error(`quote:${res.status}`), { status: res.status });
+        return res.json() as Promise<Record<string, unknown>>;
+      }),
+      getCached(`profile:${upperSymbol}`, TTL.PROFILE, async () => {
+        const res = await fetch(profileUrl);
+        if (!res.ok) return {} as Record<string, unknown>;
+        return res.json() as Promise<Record<string, unknown>>;
+      }),
     ]);
 
-    if (!priceRes.ok) {
-      return NextResponse.json(
-        { error: `Failed to fetch quote for ${upperSymbol}` },
-        { status: priceRes.status === 429 ? 429 : 502 }
-      );
-    }
-
-    const priceData = await priceRes.json();
     const rawCurrentPrice = typeof priceData?.c === 'number' && Number.isFinite(priceData.c) ? priceData.c : null;
     const rawPercentChange = typeof priceData?.dp === 'number' && Number.isFinite(priceData.dp) ? priceData.dp : null;
 
@@ -297,38 +299,34 @@ export async function GET(
     let companyName = 'Unknown Corp';
     let logo: string | null = null;
 
-    if (profileRes.ok) {
-      const profileData = await profileRes.json();
-      if (typeof profileData?.name === 'string' && profileData.name.trim()) {
-        companyName = profileData.name.trim();
-      }
-      if (typeof profileData?.logo === 'string' && profileData.logo.trim()) {
-        logo = profileData.logo.trim();
-      }
+    if (typeof profileData?.name === 'string' && profileData.name.trim()) {
+      companyName = profileData.name.trim();
+    }
+    if (typeof profileData?.logo === 'string' && profileData.logo.trim()) {
+      logo = profileData.logo.trim();
     }
 
     let fundamentals: FundamentalsPayload | null = null;
     if (includeFundamentals) {
       try {
-        const metricsRes = await fetch(
-          `https://finnhub.io/api/v1/stock/metric?symbol=${upperSymbol}&metric=all&token=${apiKey}`,
-          { next: { revalidate: 60 * 60 * 6 } },
-        );
-
-        if (metricsRes.ok) {
+        const metricRecord = await getCached(`metrics:${upperSymbol}`, TTL.METRICS, async () => {
+          const metricsRes = await fetch(
+            `https://finnhub.io/api/v1/stock/metric?symbol=${upperSymbol}&metric=all&token=${apiKey}`,
+          );
+          if (!metricsRes.ok) return {} as Record<string, unknown>;
           const metricsData = await metricsRes.json();
-          const metricRecord = metricsData?.metric && typeof metricsData.metric === 'object'
-            ? (metricsData.metric as Record<string, unknown>)
-            : {};
+          return (metricsData?.metric && typeof metricsData.metric === 'object'
+            ? metricsData.metric
+            : {}) as Record<string, unknown>;
+        });
 
-          const trailingPe = pickMetric(metricRecord, ['peBasicExclExtraTTM', 'peInclExtraTTM', 'peTTM']);
-          const normalizedPe = pickMetric(metricRecord, ['peNormalizedAnnual', 'peBasicExclExtraAnnual', 'peExclExtraAnnual', 'peAnnual']);
+        const trailingPe = pickMetric(metricRecord, ['peBasicExclExtraTTM', 'peInclExtraTTM', 'peTTM']);
+        const normalizedPe = pickMetric(metricRecord, ['peNormalizedAnnual', 'peBasicExclExtraAnnual', 'peExclExtraAnnual', 'peAnnual']);
 
-          fundamentals = {
-            currentPe: trailingPe ?? normalizedPe,
-            dividendYield: resolveDividendYieldPercent(metricRecord, rawCurrentPrice),
-          };
-        }
+        fundamentals = {
+          currentPe: trailingPe ?? normalizedPe,
+          dividendYield: resolveDividendYieldPercent(metricRecord, rawCurrentPrice),
+        };
       } catch (metricsError) {
         console.error(`FinnHub metrics fetch failed for ${upperSymbol}`, metricsError);
       }
@@ -350,6 +348,9 @@ export async function GET(
     );
   } catch (error) {
     console.error("FinnHub API Error:", error);
+    const status = (error as { status?: number }).status;
+    if (status === 429) return NextResponse.json({ error: `Rate limited for ${upperSymbol}` }, { status: 429 });
+    if (status) return NextResponse.json({ error: `Failed to fetch quote for ${upperSymbol}` }, { status: 502 });
     return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
   }
 }

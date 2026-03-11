@@ -6,12 +6,38 @@ export default function PriceDisplay({ symbol, avgPrice, quantity, children, com
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+    const cacheKey = `portfo_price_${symbol}`;
+
     async function fetchPrice() {
       try {
         setLoading(true);
+
+        // Check sessionStorage first to avoid redundant API calls.
+        try {
+          const raw = sessionStorage.getItem(cacheKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { data: unknown; cachedAt: number };
+            if (Date.now() - parsed.cachedAt < CACHE_TTL_MS) {
+              setData(parsed.data);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch {
+          // sessionStorage unavailable (SSR guard) — fall through to fetch.
+        }
+
         const response = await fetch(`/api/price/${symbol}`);
         if (!response.ok) throw new Error('Network response was not ok');
         const result = await response.json();
+
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ data: result, cachedAt: Date.now() }));
+        } catch {
+          // Storage quota exceeded — ignore.
+        }
+
         setData(result);
       } catch (e) {
         console.error("Error fetching price for", symbol, e);
