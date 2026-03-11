@@ -7,6 +7,7 @@ import {
   isDatabaseConfigured,
   upsertPublicAnalysisReviewVote,
 } from '../../../../../../../services/database';
+import { DEMO_AUTHOR_ID } from '../../../../../../../lib/demo-analyses';
 
 type VotePayload = {
   vote: -1 | 0 | 1;
@@ -83,6 +84,10 @@ export async function PUT(
 
   if (!symbol || !authorId) {
     return NextResponse.json({ error: 'Invalid review path' }, { status: 400 });
+  }
+
+  if (authorId === DEMO_AUTHOR_ID) {
+    return NextResponse.json({ error: 'Demo reviews cannot be voted on' }, { status: 403 });
   }
 
   if (authorId === userId) {

@@ -5,6 +5,7 @@ import {
   getPublicAnalysisReviewVotesBySymbol,
   isDatabaseConfigured,
 } from '../../../../services/database';
+import { DEMO_AUTHOR_ID, getDemoReview } from '../../../../lib/demo-analyses';
 
 type VoteSummary = {
   upvotes: number;
@@ -55,6 +56,19 @@ function buildVoteSummaryByReview(
   return summary;
 }
 
+function formatDemoAsReview(demo: ReturnType<typeof getDemoReview> & object) {
+  return {
+    reviewUserId: demo.review_user_id,
+    symbol: demo.symbol,
+    companyName: demo.company_name,
+    authorLabel: demo.author_label,
+    publishedAt: demo.published_at,
+    updatedAt: demo.updated_at,
+    summaryPreview: summaryPreviewFromPublishedFile(demo.published_file),
+    votes: { upvotes: 0, downvotes: 0, score: 0, userVote: 0 as const },
+  };
+}
+
 function summaryPreviewFromPublishedFile(publishedFile: unknown): string {
   if (!publishedFile || typeof publishedFile !== 'object') return '';
 
@@ -65,17 +79,20 @@ function summaryPreviewFromPublishedFile(publishedFile: unknown): string {
 }
 
 export async function GET(request: Request) {
-  if (!isDatabaseConfigured()) {
-    return NextResponse.json({ reviews: [], storage: 'local-only' }, { status: 200 });
-  }
-
-  const { userId } = await auth();
   const { searchParams } = new URL(request.url);
   const symbol = normalizeSymbol(searchParams.get('symbol'));
 
   if (!symbol) {
     return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
   }
+
+  if (!isDatabaseConfigured()) {
+    const demo = getDemoReview(symbol);
+    const reviews = demo ? [formatDemoAsReview(demo)] : [];
+    return NextResponse.json({ reviews, storage: 'local-only' });
+  }
+
+  const { userId } = await auth();
 
   try {
     const rows = await getPublicAnalysisReviewsBySymbol(symbol, 30);
@@ -108,6 +125,12 @@ export async function GET(request: Request) {
         votes: votesSummary,
       };
     });
+
+    // Append demo entry if one exists and no real entry already has that ID.
+    const demo = getDemoReview(symbol);
+    if (demo && !(rows || []).some((r) => r.review_user_id === DEMO_AUTHOR_ID)) {
+      reviews.push(formatDemoAsReview(demo));
+    }
 
     return NextResponse.json({ reviews, storage: 'database' });
   } catch (error) {

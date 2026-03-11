@@ -5,6 +5,7 @@ import {
   getPublicAnalysisReviewVotesByReview,
   isDatabaseConfigured,
 } from '../../../../../../services/database';
+import { DEMO_AUTHOR_ID, getDemoReview } from '../../../../../../lib/demo-analyses';
 
 type VoteSummary = {
   upvotes: number;
@@ -54,11 +55,6 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ symbol: string; authorId: string }> },
 ) {
-  if (!isDatabaseConfigured()) {
-    return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
-  }
-
-  const { userId } = await auth();
   const { symbol: rawSymbol, authorId: rawAuthorId } = await context.params;
 
   const symbol = normalizeSymbol(rawSymbol);
@@ -67,6 +63,31 @@ export async function GET(
   if (!symbol || !authorId) {
     return NextResponse.json({ error: 'Invalid review path' }, { status: 400 });
   }
+
+  // Serve demo without hitting the database.
+  if (authorId === DEMO_AUTHOR_ID) {
+    const demo = getDemoReview(symbol);
+    if (!demo) return NextResponse.json({ error: 'Demo review not found' }, { status: 404 });
+    return NextResponse.json({
+      review: {
+        reviewUserId: demo.review_user_id,
+        symbol: demo.symbol,
+        companyName: demo.company_name,
+        authorLabel: demo.author_label,
+        publishedAt: demo.published_at,
+        updatedAt: demo.updated_at,
+        publishedFile: demo.published_file,
+        votes: { upvotes: 0, downvotes: 0, score: 0, userVote: 0 as const },
+      },
+      storage: 'demo',
+    });
+  }
+
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+  }
+
+  const { userId } = await auth();
 
   try {
     const row = await getPublicAnalysisReviewByUserIdAndSymbol(authorId, symbol);
