@@ -45,6 +45,7 @@ type Draft = {
   segments?: BusinessSegment[];
   epsHistory?: EpsDataPoint[];
   epsPeMultiple?: string;
+  aiReport?: string;
 };
 
 type BusinessSegment = {
@@ -329,6 +330,11 @@ export default function AnalysisSymbolPage() {
   const [aiPasteText, setAiPasteText] = useState('');
   const [aiPasteError, setAiPasteError] = useState('');
   const [analysisPromptCopied, setAnalysisPromptCopied] = useState(false);
+  const [aiReport, setAiReport] = useState('');
+  const [showReportImport, setShowReportImport] = useState(false);
+  const [reportPasteText, setReportPasteText] = useState('');
+  const [reportPasteError, setReportPasteError] = useState('');
+  const [reportApplyStatus, setReportApplyStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('Save');
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
@@ -399,6 +405,7 @@ export default function AnalysisSymbolPage() {
     segments,
     epsHistory,
     epsPeMultiple,
+    aiReport,
     publishedFile: params?.publishedOverride ?? publishedFile ?? undefined,
   });
 
@@ -463,6 +470,7 @@ export default function AnalysisSymbolPage() {
     setSegments([]);
     setEpsHistory([]);
     setEpsPeMultiple('');
+    setAiReport('');
     setCompanyName('');
     setCompanyLogo('');
     setCurrentPrice(null);
@@ -540,6 +548,7 @@ export default function AnalysisSymbolPage() {
       setSegments(sanitizeSegments(parsed.segments));
       setEpsHistory(sanitizeEpsHistory(parsed.epsHistory ?? []));
       setEpsPeMultiple(typeof parsed.epsPeMultiple === 'string' ? parsed.epsPeMultiple : '');
+      setAiReport(typeof parsed.aiReport === 'string' ? parsed.aiReport : '');
     };
 
     const restoreFromLocal = () => {
@@ -1090,6 +1099,121 @@ Respond ONLY with the JSON code block below — no explanation before or after:
     });
   };
 
+  const applyReportPaste = () => {
+    setReportPasteError('');
+    setReportApplyStatus('');
+    const text = reportPasteText.trim();
+    if (!text) {
+      setReportPasteError('Paste your analysis report first.');
+      return;
+    }
+
+    const num = (raw: string) => raw.replace(/,/g, '');
+
+    const filled: string[] = [];
+
+    // DCF inputs from markdown table
+    const fcfMatch = text.match(/\|\s*FCF\s*\(TTM\)\s*\|\s*\$?([\d,]+(?:\.\d+)?)M/i);
+    if (fcfMatch) { setFcf(num(fcfMatch[1])); filled.push('FCF'); }
+
+    const sharesMatch = text.match(/\|\s*Shares\s*Outstanding\s*\|\s*([\d,]+(?:\.\d+)?)M/i);
+    if (sharesMatch) { setShares(num(sharesMatch[1])); filled.push('Shares'); }
+
+    const cashMatch = text.match(/\|\s*Cash[^|]*?\|\s*\$?([\d,]+(?:\.\d+)?)M/i);
+    if (cashMatch) { setCash(num(cashMatch[1])); filled.push('Cash'); }
+
+    const debtMatch = text.match(/\|\s*Total\s*Debt\s*\|\s*\$?([\d,]+(?:\.\d+)?)M/i);
+    if (debtMatch) { setDebt(num(debtMatch[1])); filled.push('Debt'); }
+
+    const waccMatch = text.match(/\|\s*WACC\s*\|\s*([\d.]+)%/i);
+    if (waccMatch) { setDiscountRate(String(parseFloat(waccMatch[1]) / 100)); filled.push('WACC'); }
+
+    const termMatch = text.match(/\|\s*Terminal\s*Growth\s*\|\s*([\d.]+)%/i);
+    if (termMatch) { setTerminalGrowth(String(parseFloat(termMatch[1]) / 100)); filled.push('Terminal Growth'); }
+
+    const yearsMatch = text.match(/\|\s*Projection\s*Period\s*\|\s*(\d+)\s*years/i);
+    if (yearsMatch) { setYears(yearsMatch[1]); filled.push('Years'); }
+
+    // Growth rates
+    const bearGrowthMatch = text.match(/\|\s*Bear(?:ish)?\s*FCF\s*Growth\s*\|\s*([\d.]+)%/i);
+    const baseGrowthMatch = text.match(/\|\s*Base\s*FCF\s*Growth\s*\|\s*([\d.]+)%/i);
+    const bullGrowthMatch = text.match(/\|\s*Bull(?:ish)?\s*FCF\s*Growth\s*\|\s*([\d.]+)%/i);
+
+    if (bearGrowthMatch || baseGrowthMatch || bullGrowthMatch) {
+      setScenarioAnalyses((prev) => ({
+        conservative: {
+          ...prev.conservative,
+          ...(bearGrowthMatch ? { growthRate: String(parseFloat(bearGrowthMatch[1]) / 100) } : {}),
+        },
+        base: {
+          ...prev.base,
+          ...(baseGrowthMatch ? { growthRate: String(parseFloat(baseGrowthMatch[1]) / 100) } : {}),
+        },
+        aggressive: {
+          ...prev.aggressive,
+          ...(bullGrowthMatch ? { growthRate: String(parseFloat(bullGrowthMatch[1]) / 100) } : {}),
+        },
+      }));
+      filled.push('Growth Rates');
+    }
+
+    // Scenario analysis text — extract content between section headers
+    const extractBetween = (text: string, startRe: RegExp, endRe: RegExp): string => {
+      const startMatch = text.match(startRe);
+      if (!startMatch || startMatch.index === undefined) return '';
+      const after = text.slice(startMatch.index + startMatch[0].length);
+      const endMatch = after.match(endRe);
+      return (endMatch ? after.slice(0, endMatch.index) : after).replace(/^#+\s+.+$/gm, '').trim();
+    };
+
+    const bearText = extractBetween(text, /###\s*BEAR\s*CASE[^\n]*/i, /###\s*BASE\s*CASE/i);
+    const baseText = extractBetween(text, /###\s*BASE\s*CASE[^\n]*/i, /###\s*BULL\s*CASE/i);
+    const bullText = extractBetween(text, /###\s*BULL\s*CASE[^\n]*/i, /^---/m);
+
+    if (bearText || baseText || bullText) {
+      setScenarioAnalyses((prev) => ({
+        conservative: { ...prev.conservative, ...(bearText ? { analysis: bearText } : {}) },
+        base: { ...prev.base, ...(baseText ? { analysis: baseText } : {}) },
+        aggressive: { ...prev.aggressive, ...(bullText ? { analysis: bullText } : {}) },
+      }));
+      filled.push('Scenario Analyses');
+    }
+
+    // Cases summary from final recommendation section
+    const summaryText = extractBetween(
+      text,
+      /##\s*\d*\.?\s*FINAL\s*INVESTMENT\s*RECOMMENDATION/i,
+      /^---/m,
+    ).replace(/\*Disclaimer[^*]*\*/gi, '').trim();
+    if (summaryText) { setCasesSummary(summaryText.slice(0, 2000)); filled.push('Summary'); }
+
+    // Business segments
+    const segmentMatches = Array.from(
+      text.matchAll(/\*\*([^*\n]+)\*\*\s*[—\-–]\s*Revenue:\s*\$?([\d,]+)M\s*\|\s*Op\.\s*Income:\s*\$?([-\d,]+)M/gi),
+    );
+    if (segmentMatches.length > 0) {
+      setSegments(
+        segmentMatches.map((m) => ({
+          name: m[1].trim(),
+          revenue: m[2].replace(/,/g, ''),
+          operatingIncome: m[3].replace(/,/g, ''),
+          growth: '',
+        })),
+      );
+      filled.push(`${segmentMatches.length} Segments`);
+    }
+
+    if (filled.length === 0) {
+      setReportPasteError('Could not extract any data — make sure you pasted a Claude-generated analysis report.');
+      return;
+    }
+
+    setReportApplyStatus(`Filled: ${filled.join(' · ')}`);
+    setReportPasteText('');
+    setShowReportImport(false);
+    setTimeout(() => setReportApplyStatus(''), 5000);
+  };
+
   const saveDcfPriceToFile = () => {
     if (dcfValue === null) {
       setSaveDcfStatus('Enter valid DCF inputs');
@@ -1477,8 +1601,109 @@ Respond ONLY with the JSON code block below — no explanation before or after:
                 </div>
               ))}
             </div>
+
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold text-violet-300/90 uppercase tracking-[0.1em]">Import Analysis Report</p>
+                  <p className="text-[11px] text-blue-100/60 mt-0.5">Paste a Claude-generated report to auto-fill DCF inputs, growth rates, segments, and scenario analyses.</p>
+                </div>
+                <button
+                  onClick={() => { setShowReportImport((p) => !p); setReportPasteError(''); setReportApplyStatus(''); }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg border border-violet-400/25 bg-violet-500/8 text-[11px] font-semibold text-violet-300 hover:bg-violet-500/15 transition-all"
+                >
+                  {showReportImport ? 'Hide' : 'Paste Report'}
+                </button>
+              </div>
+
+              {reportApplyStatus && (
+                <p className="mt-2 text-[11px] font-semibold text-emerald-300">{reportApplyStatus}</p>
+              )}
+
+              {showReportImport && (
+                <div className="mt-3 space-y-2">
+                  <textarea
+                    value={reportPasteText}
+                    onChange={(e) => { setReportPasteText(e.target.value); setReportPasteError(''); }}
+                    placeholder="Paste your full Claude analysis report here (markdown format)..."
+                    rows={6}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-[12px] text-blue-100 placeholder:text-blue-200/25 resize-y focus:outline-none focus:border-violet-400/40"
+                  />
+                  {reportPasteError && (
+                    <p className="text-[11px] text-rose-300">{reportPasteError}</p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={applyReportPaste}
+                      disabled={!reportPasteText.trim()}
+                      className="px-4 py-2 rounded-xl border border-violet-400/35 bg-violet-500/10 text-[12px] font-semibold text-violet-200 hover:bg-violet-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Parse &amp; Autofill
+                    </button>
+                    <p className="text-[10px] text-blue-200/40">Extracts: DCF inputs · growth rates · segments · bear/base/bull thesis · recommendation</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
+        <div className="mb-6 bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 backdrop-blur-md overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-white/10">
+            <div>
+              <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-[0.1em]">Full AI Analysis Report</p>
+              <p className="text-[11px] text-blue-100/55 mt-0.5">Saved alongside your filing — paste the complete report from Claude here.</p>
+            </div>
+            {aiReport && !isViewMode && (
+              <button
+                onClick={() => setAiReport('')}
+                className="shrink-0 px-3 py-1.5 rounded-lg border border-rose-300/25 bg-rose-500/8 text-[11px] font-semibold text-rose-300/80 hover:bg-rose-500/15 transition-all"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {!isViewMode && !aiReport && (
+            <div className="px-6 py-4">
+              <textarea
+                value={aiReport}
+                onChange={(e) => setAiReport(e.target.value)}
+                placeholder="Paste the full AI-generated analysis report here (markdown or plain text)..."
+                rows={8}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[12px] text-blue-100 placeholder:text-blue-200/25 resize-y focus:outline-none focus:border-blue-400/40 font-mono leading-relaxed"
+              />
+            </div>
+          )}
+
+          {!isViewMode && aiReport && (
+            <div className="px-6 py-4">
+              <pre className="whitespace-pre-wrap font-mono text-[12px] text-blue-100/85 leading-relaxed max-h-[520px] overflow-y-auto pr-2 scrollbar-thin">
+                {aiReport}
+              </pre>
+              <button
+                onClick={() => setAiReport('')}
+                className="mt-3 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-[11px] font-semibold text-blue-200/70 hover:bg-white/10 transition-all"
+              >
+                Replace Report
+              </button>
+            </div>
+          )}
+
+          {isViewMode && aiReport && (
+            <div className="px-6 py-4">
+              <pre className="whitespace-pre-wrap font-mono text-[12px] text-blue-100/85 leading-relaxed max-h-[520px] overflow-y-auto pr-2">
+                {aiReport}
+              </pre>
+            </div>
+          )}
+
+          {isViewMode && !aiReport && (
+            <div className="px-6 py-4">
+              <p className="text-[12px] text-blue-100/40 italic">No AI report saved for this filing.</p>
+            </div>
+          )}
+        </div>
 
         <div className="rounded-2xl border border-white/10 bg-slate-900/60 shadow-sm backdrop-blur-md overflow-hidden">
           <div className="px-6 pt-5 pb-4 border-b border-white/10 bg-gradient-to-r from-slate-900/80 via-slate-900/75 to-blue-900/30">
