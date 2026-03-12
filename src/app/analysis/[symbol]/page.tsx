@@ -328,6 +328,7 @@ export default function AnalysisSymbolPage() {
   const [aiPromptCopied, setAiPromptCopied] = useState(false);
   const [aiPasteText, setAiPasteText] = useState('');
   const [aiPasteError, setAiPasteError] = useState('');
+  const [analysisPromptCopied, setAnalysisPromptCopied] = useState(false);
   const [saveStatus, setSaveStatus] = useState('Save');
   const [storageMode, setStorageMode] = useState<StorageMode>('unknown');
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
@@ -960,6 +961,135 @@ Respond ONLY with the JSON code block below — no explanation before or after:
     }
   };
 
+  const generateAnalysisPrompt = (): string => {
+    const displayName = companyName || analysisSymbol;
+
+    const fmtRate = (val: string) => {
+      const n = parseNumericInput(val);
+      if (Number.isNaN(n)) return '—';
+      return `${(n * 100).toFixed(1)}%`;
+    };
+
+    const fmtDcf = (growthRate: string) => {
+      const v = calculateDcfForGrowthRate(growthRate);
+      return v !== null ? `$${formatCurrency(v)}/share` : '—';
+    };
+
+    const lines: string[] = [];
+
+    lines.push(`You are a professional equity analyst with deep expertise in fundamental analysis, DCF valuation, and investment thesis development.`);
+    lines.push('');
+    lines.push(`I am building an investment analysis for ${analysisSymbol} (${displayName}). Your task is to help me conduct a comprehensive, rigorous analysis.`);
+    lines.push('');
+    lines.push(`Start by reviewing the data I have below, then ask me for any key missing information before providing your full analysis.`);
+    lines.push('');
+    lines.push('== DATA ALREADY IN MY MODEL ==');
+    lines.push('');
+
+    if (currentPrice !== null) {
+      lines.push(`Current Market Price: $${formatCurrency(currentPrice)}`);
+    }
+
+    if (fundamentals) {
+      if (fundamentals.currentPe !== null) {
+        lines.push(`Current P/E Ratio: ${formatMetricValue(fundamentals.currentPe, 2)}`);
+      }
+      if (fundamentals.dividendYield !== null) {
+        lines.push(`Dividend Yield: ${formatMetricPercent(fundamentals.dividendYield, 1, 1)}`);
+      }
+    }
+
+    const hasDcfInputs = fcf.trim() || shares.trim();
+    if (hasDcfInputs) {
+      lines.push('');
+      lines.push('DCF Model Inputs:');
+      if (fcf.trim()) lines.push(`  Free Cash Flow (TTM): $${fcf}M`);
+      if (shares.trim()) lines.push(`  Shares Outstanding: ${shares}M`);
+      if (cash.trim()) lines.push(`  Cash & Equivalents: $${cash}M`);
+      if (debt.trim()) lines.push(`  Total Debt: $${debt}M`);
+      lines.push(`  WACC / Discount Rate: ${fmtRate(discountRate)}`);
+      lines.push(`  Terminal Growth Rate: ${fmtRate(terminalGrowth)}`);
+      lines.push(`  Projection Years: ${years}`);
+      lines.push('');
+      lines.push('DCF Intrinsic Value by Scenario:');
+      lines.push(`  Bearish  (${fmtRate(scenarioAnalyses.conservative.growthRate)} FCF growth): ${fmtDcf(scenarioAnalyses.conservative.growthRate)}`);
+      lines.push(`  Base     (${fmtRate(scenarioAnalyses.base.growthRate)} FCF growth): ${fmtDcf(scenarioAnalyses.base.growthRate)}`);
+      lines.push(`  Bullish  (${fmtRate(scenarioAnalyses.aggressive.growthRate)} FCF growth): ${fmtDcf(scenarioAnalyses.aggressive.growthRate)}`);
+      if (currentPrice !== null && baseScenarioDcfValue !== null) {
+        const gap = ((baseScenarioDcfValue - currentPrice) / currentPrice * 100).toFixed(1);
+        lines.push(`  Base Case vs Current Price: ${Number(gap) >= 0 ? '+' : ''}${gap}% (${Number(gap) >= 0 ? 'undervalued' : 'overvalued'} at base)`);
+      }
+    }
+
+    const validEps = epsHistory.filter((p) => p.year.trim() && p.eps.trim());
+    if (validEps.length > 0) {
+      lines.push('');
+      lines.push('Historical EPS:');
+      validEps.forEach((p) => lines.push(`  ${p.year}: $${p.eps}`));
+      if (epsPeMultiple.trim()) lines.push(`  Forward P/E Multiple used: ${epsPeMultiple}x`);
+    }
+
+    const validSegments = segments.filter((s) => s.name.trim());
+    if (validSegments.length > 0) {
+      lines.push('');
+      lines.push('Business Segments:');
+      validSegments.forEach((s) => {
+        let line = `  ${s.name}`;
+        if (s.revenue.trim()) line += ` — Revenue: $${s.revenue}M`;
+        if (s.operatingIncome.trim()) line += `, Op. Income: $${s.operatingIncome}M`;
+        if (s.growth.trim()) line += `, Base Growth: ${s.growth}%/yr`;
+        lines.push(line);
+      });
+    }
+
+    const hasAnyThesis = Object.values(scenarioAnalyses).some((s) => s.analysis.trim());
+    if (hasAnyThesis) {
+      lines.push('');
+      lines.push('My Current Analysis Notes:');
+      for (const { key, label } of scenarioOptions) {
+        const text = scenarioAnalyses[key].analysis.trim();
+        if (text) {
+          lines.push(`  [${label}] ${text}`);
+        }
+      }
+    }
+
+    if (casesSummary.trim()) {
+      lines.push('');
+      lines.push(`Summary Notes: ${casesSummary}`);
+    }
+
+    lines.push('');
+    lines.push('== WHAT I NEED FROM YOU ==');
+    lines.push('');
+    lines.push('Please start by asking me for any missing information you need to conduct a thorough analysis. This should include some or all of:');
+    lines.push('');
+    lines.push('1. Key sections from the most recent 10-K or 10-Q (MD&A, business overview, risk factors, revenue breakdown)');
+    lines.push('2. Management revenue and earnings guidance from the most recent earnings call');
+    lines.push('3. Segment-level revenue, margin, and growth driver details');
+    lines.push('4. Competitive landscape — main competitors, moat, and market share trends');
+    lines.push('5. Balance sheet details — debt maturity schedule, capex trends, share buyback history');
+    lines.push('6. Macro or industry tailwinds/headwinds relevant to this business');
+    lines.push('7. Any recent news, acquisitions, or strategic pivots that may affect valuation');
+    lines.push('');
+    lines.push('Once you have gathered enough information, provide:');
+    lines.push('- A structured investment thesis for the bear, base, and bull case');
+    lines.push('- Assessment of my DCF assumptions — are the growth rates and WACC reasonable?');
+    lines.push('- Key risks for each scenario and how they affect the intrinsic value range');
+    lines.push('- Relative valuation context (peers, sector multiples, historical multiples)');
+    lines.push('- Final investment recommendation with a conviction level (Low / Medium / High) and reasoning');
+
+    return lines.join('\n');
+  };
+
+  const copyAnalysisPrompt = () => {
+    const prompt = generateAnalysisPrompt();
+    void navigator.clipboard.writeText(prompt).then(() => {
+      setAnalysisPromptCopied(true);
+      setTimeout(() => setAnalysisPromptCopied(false), 2500);
+    });
+  };
+
   const saveDcfPriceToFile = () => {
     if (dcfValue === null) {
       setSaveDcfStatus('Enter valid DCF inputs');
@@ -1314,6 +1444,39 @@ Respond ONLY with the JSON code block below — no explanation before or after:
             >
               {saveDcfStatus}
             </button>
+          </div>
+        )}
+
+        {!isViewMode && (
+          <div className="mb-6 bg-slate-900/65 rounded-2xl shadow-sm border border-white/10 p-6 backdrop-blur-md">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-[11px] font-semibold text-violet-300 uppercase tracking-[0.1em] mb-1">AI Analysis Prompt Generator</p>
+                <p className="text-xs text-blue-100/75 max-w-xl">
+                  Generate a structured prompt pre-filled with your model data. Paste it into Claude, ChatGPT, or any AI — it will ask you for the 10-K, earnings call, and financials it needs, then deliver a full investment thesis.
+                </p>
+              </div>
+              <button
+                onClick={copyAnalysisPrompt}
+                className="shrink-0 px-4 py-2.5 rounded-xl border border-violet-400/35 bg-violet-500/10 text-[12px] font-semibold text-violet-200 hover:bg-violet-500/20 transition-all active:scale-95"
+              >
+                {analysisPromptCopied ? '✓ Copied to Clipboard!' : 'Copy Analysis Prompt'}
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {[
+                { label: 'Step 1', desc: 'Copy the prompt above' },
+                { label: 'Step 2', desc: 'Paste into Claude.ai or ChatGPT' },
+                { label: 'Step 3', desc: 'Provide 10-K / 10-Q when asked' },
+                { label: 'Step 4', desc: 'Get bear / base / bull thesis' },
+              ].map(({ label, desc }) => (
+                <div key={label} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold text-violet-300/80 uppercase tracking-[0.1em]">{label}</p>
+                  <p className="mt-1 text-[12px] text-blue-100/80">{desc}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
